@@ -1,7 +1,10 @@
 """Tests for iAqualink config flow."""
 from unittest.mock import patch
 
-import iaqualink.exception
+from iaqualink.exception import (
+    AqualinkServiceException,
+    AqualinkServiceUnauthorizedException,
+)
 import pytest
 
 from homeassistant.components.iaqualink import config_flow
@@ -49,7 +52,7 @@ async def test_with_invalid_credentials(hass, config_data, step):
     func = getattr(flow, fname)
     with patch(
         "iaqualink.client.AqualinkClient.login",
-        side_effect=iaqualink.exception.AqualinkServiceUnauthorizedException,
+        side_effect=AqualinkServiceUnauthorizedException,
     ):
         result = await func(config_data)
 
@@ -68,7 +71,7 @@ async def test_service_exception(hass, config_data, step):
     func = getattr(flow, fname)
     with patch(
         "iaqualink.client.AqualinkClient.login",
-        side_effect=iaqualink.exception.AqualinkServiceException,
+        side_effect=AqualinkServiceException,
     ):
         result = await func(config_data)
 

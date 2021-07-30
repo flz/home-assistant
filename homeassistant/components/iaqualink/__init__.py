@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from functools import wraps
 import logging
-from typing import Any, Awaitable
+from typing import Awaitable
 
 import aiohttp.client_exceptions
 from iaqualink.client import AqualinkClient
@@ -175,10 +175,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         try:
             await systems[0].update()
+            cur = systems[0].online
         except AqualinkServiceException as svc_exception:
             _LOGGER.warning("Failed to refresh iAqualink state: %s", svc_exception)
         else:
-            if prev is not True:
+            if cur is True and prev is not True:
                 _LOGGER.warning("Reconnected to iAqualink")
 
         async_dispatcher_send(hass, DOMAIN)
@@ -194,7 +195,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         platform for platform in PLATFORMS if platform in hass.data[DOMAIN]
     ]
 
-    hass.data[DOMAIN].clear()
+    del hass.data[DOMAIN]
 
     return await hass.config_entries.async_unload_platforms(entry, platforms_to_unload)
 
