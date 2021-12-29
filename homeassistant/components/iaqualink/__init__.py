@@ -20,7 +20,9 @@ from iaqualink.device import (
 from iaqualink.exception import AqualinkServiceException
 from typing_extensions import Concatenate, ParamSpec
 
-from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
+from homeassistant.components.binary_sensor import (
+    DOMAIN as BINARY_SENSOR_DOMAIN,
+)
 from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
@@ -29,7 +31,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
     async_dispatcher_send,
@@ -70,8 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sensors = hass.data[DOMAIN][SENSOR_DOMAIN] = []
     switches = hass.data[DOMAIN][SWITCH_DOMAIN] = []
 
-    session = async_get_clientsession(hass)
-    aqualink = AqualinkClient(username, password, session)
+    aqualink = AqualinkClient(username, password)
     try:
         await aqualink.login()
     except AqualinkServiceException as login_exception:
@@ -119,7 +119,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     forward_setup = hass.config_entries.async_forward_entry_setup
     if binary_sensors:
-        _LOGGER.debug("Got %s binary sensors: %s", len(binary_sensors), binary_sensors)
+        _LOGGER.debug(
+            "Got %s binary sensors: %s", len(binary_sensors), binary_sensors
+        )
         hass.async_create_task(forward_setup(entry, Platform.BINARY_SENSOR))
     if climates:
         _LOGGER.debug("Got %s climates: %s", len(climates), climates)
@@ -142,7 +144,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await systems[0].update()
         except AqualinkServiceException as svc_exception:
             if prev is not None:
-                _LOGGER.warning("Failed to refresh iAqualink state: %s", svc_exception)
+                _LOGGER.warning(
+                    "Failed to refresh iAqualink state: %s", svc_exception
+                )
         else:
             cur = systems[0].online
             if cur is True and prev is not True:
@@ -163,7 +167,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     del hass.data[DOMAIN]
 
-    return await hass.config_entries.async_unload_platforms(entry, platforms_to_unload)
+    return await hass.config_entries.async_unload_platforms(
+        entry, platforms_to_unload
+    )
 
 
 def refresh_system(
@@ -199,7 +205,9 @@ class AqualinkEntity(Entity):
     async def async_added_to_hass(self) -> None:
         """Set up a listener when this entity is added to HA."""
         self.async_on_remove(
-            async_dispatcher_connect(self.hass, DOMAIN, self.async_write_ha_state)
+            async_dispatcher_connect(
+                self.hass, DOMAIN, self.async_write_ha_state
+            )
         )
 
     @property
