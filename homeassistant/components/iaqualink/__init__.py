@@ -119,15 +119,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     platforms = []
     if binary_sensors:
-<<<<<<< HEAD
-        _LOGGER.debug("Got %s binary sensors: %s", len(binary_sensors), binary_sensors)
-        platforms.append(Platform.BINARY_SENSOR)
-=======
         _LOGGER.debug(
             "Got %s binary sensors: %s", len(binary_sensors), binary_sensors
         )
-        hass.async_create_task(forward_setup(entry, Platform.BINARY_SENSOR))
->>>>>>> c89e6bcb4d (Update to iaqualink-http2)
+        platforms.append(Platform.BINARY_SENSOR)
     if climates:
         _LOGGER.debug("Got %s climates: %s", len(climates), climates)
         platforms.append(Platform.CLIMATE)
