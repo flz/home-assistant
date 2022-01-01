@@ -57,7 +57,9 @@ PLATFORMS = [
 ]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(  # noqa: C901
+    hass: HomeAssistant, entry: ConfigEntry
+) -> bool:
     """Set up Aqualink from a config entry."""
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
@@ -97,25 +99,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("No systems detected or supported")
         return False
 
-    # Only supporting the first system for now.
-    try:
-        devices = await systems[0].get_devices()
-    except AqualinkServiceException as svc_exception:
-        raise ConfigEntryNotReady(
-            f"Error while attempting to retrieve devices list: {svc_exception}"
-        ) from svc_exception
+    for system in systems:
+        try:
+            devices = await system.get_devices()
+        except AqualinkServiceException as svc_exception:
+            await aqualink.close()
+            raise ConfigEntryNotReady(
+                f"Error while attempting to retrieve devices list: {svc_exception}"
+            ) from svc_exception
 
-    for dev in devices.values():
-        if isinstance(dev, AqualinkThermostat):
-            climates += [dev]
-        elif isinstance(dev, AqualinkLight):
-            lights += [dev]
-        elif isinstance(dev, AqualinkBinarySensor):
-            binary_sensors += [dev]
-        elif isinstance(dev, AqualinkSensor):
-            sensors += [dev]
-        elif isinstance(dev, AqualinkToggle):
-            switches += [dev]
+        for dev in devices.values():
+            if isinstance(dev, AqualinkThermostat):
+                climates += [dev]
+            elif isinstance(dev, AqualinkLight):
+                lights += [dev]
+            elif isinstance(dev, AqualinkBinarySensor):
+                binary_sensors += [dev]
+            elif isinstance(dev, AqualinkSensor):
+                sensors += [dev]
+            elif isinstance(dev, AqualinkToggle):
+                switches += [dev]
 
     platforms = []
     if binary_sensors:
@@ -140,21 +143,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def _async_systems_update(now):
         """Refresh internal state for all systems."""
-        prev = systems[0].online
+        for system in systems:
+            prev = system.online
 
-        try:
-            await systems[0].update()
-        except AqualinkServiceException as svc_exception:
-            if prev is not None:
-                _LOGGER.warning(
-                    "Failed to refresh iAqualink state: %s", svc_exception
-                )
-        else:
-            cur = systems[0].online
-            if cur is True and prev is not True:
-                _LOGGER.warning("Reconnected to iAqualink")
+            try:
+                await system.update()
+            except AqualinkServiceException as svc_exception:
+                if prev is not None:
+                    _LOGGER.warning(
+                        "Failed to refresh system %s state: %s",
+                        system.serial,
+                        svc_exception,
+                    )
+            else:
+                cur = system.online
+                if cur is True and prev is not True:
+                    _LOGGER.warning(
+                        "System %s reconnected to iAqualink", system.serial
+                    )
 
-        async_dispatcher_send(hass, DOMAIN)
+            async_dispatcher_send(hass, DOMAIN)
 
     async_track_time_interval(hass, _async_systems_update, UPDATE_INTERVAL)
 
