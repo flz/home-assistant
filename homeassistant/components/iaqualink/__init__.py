@@ -20,9 +20,7 @@ from iaqualink.device import (
 from iaqualink.exception import AqualinkServiceException
 from typing_extensions import Concatenate, ParamSpec
 
-from homeassistant.components.binary_sensor import (
-    DOMAIN as BINARY_SENSOR_DOMAIN,
-)
+from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
@@ -126,24 +124,24 @@ async def async_setup_entry(  # noqa: C901
 
     hass.data[DOMAIN]["client"] = aqualink
 
-    forward_setup = hass.config_entries.async_forward_entry_setup
+    platforms = []
     if binary_sensors:
-        _LOGGER.debug(
-            "Got %s binary sensors: %s", len(binary_sensors), binary_sensors
-        )
-        hass.async_create_task(forward_setup(entry, Platform.BINARY_SENSOR))
+        _LOGGER.debug("Got %s binary sensors: %s", len(binary_sensors), binary_sensors)
+        platforms.append(Platform.BINARY_SENSOR)
     if climates:
         _LOGGER.debug("Got %s climates: %s", len(climates), climates)
-        hass.async_create_task(forward_setup(entry, Platform.CLIMATE))
+        platforms.append(Platform.CLIMATE)
     if lights:
         _LOGGER.debug("Got %s lights: %s", len(lights), lights)
-        hass.async_create_task(forward_setup(entry, Platform.LIGHT))
+        platforms.append(Platform.LIGHT)
     if sensors:
         _LOGGER.debug("Got %s sensors: %s", len(sensors), sensors)
-        hass.async_create_task(forward_setup(entry, Platform.SENSOR))
+        platforms.append(Platform.SENSOR)
     if switches:
         _LOGGER.debug("Got %s switches: %s", len(switches), switches)
-        hass.async_create_task(forward_setup(entry, Platform.SWITCH))
+        platforms.append(Platform.SWITCH)
+
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
 
     async def _async_systems_update(now):
         """Refresh internal state for all systems."""
@@ -162,9 +160,7 @@ async def async_setup_entry(  # noqa: C901
             else:
                 cur = system.online
                 if cur is True and prev is not True:
-                    _LOGGER.warning(
-                        "System %s reconnected to iAqualink", system.serial
-                    )
+                    _LOGGER.warning("System %s reconnected to iAqualink", system.serial)
 
             async_dispatcher_send(hass, DOMAIN)
 
@@ -184,9 +180,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     del hass.data[DOMAIN]
 
-    return await hass.config_entries.async_unload_platforms(
-        entry, platforms_to_unload
-    )
+    return await hass.config_entries.async_unload_platforms(entry, platforms_to_unload)
 
 
 def refresh_system(
@@ -215,6 +209,8 @@ class AqualinkEntity(Entity):
     class.
     """
 
+    _attr_should_poll = False
+
     def __init__(self, dev: AqualinkDevice) -> None:
         """Initialize the entity."""
         self.dev = dev
@@ -222,19 +218,8 @@ class AqualinkEntity(Entity):
     async def async_added_to_hass(self) -> None:
         """Set up a listener when this entity is added to HA."""
         self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, DOMAIN, self.async_write_ha_state
-            )
+            async_dispatcher_connect(self.hass, DOMAIN, self.async_write_ha_state)
         )
-
-    @property
-    def should_poll(self) -> bool:
-        """Return False as entities shouldn't be polled.
-
-        Entities are checked periodically as the integration runs periodic
-        updates on a timer.
-        """
-        return False
 
     @property
     def unique_id(self) -> str:

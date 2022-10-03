@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from functools import lru_cache
-import json
 import logging
 import os
 import pathlib
@@ -22,6 +21,7 @@ from homeassistant.const import CONF_MODE, CONF_NAME, EVENT_THEMES_UPDATED
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers import service
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.json import json_dumps_sorted
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.typing import ConfigType
@@ -135,7 +135,7 @@ class Manifest:
         return self._serialized
 
     def _serialize(self) -> None:
-        self._serialized = json.dumps(self.manifest, sort_keys=True)
+        self._serialized = json_dumps_sorted(self.manifest)
 
     def update_key(self, key: str, val: str) -> None:
         """Add a keyval to the manifest.json."""
@@ -548,11 +548,9 @@ class IndexView(web_urldispatcher.AbstractResource):
         """Return a dict with additional info useful for introspection."""
         return {"panels": list(self.hass.data[DATA_PANELS])}
 
-    def freeze(self) -> None:
-        """Freeze the resource."""
-
     def raw_match(self, path: str) -> bool:
         """Perform a raw match against path."""
+        return False
 
     def get_template(self) -> jinja2.Template:
         """Get template."""

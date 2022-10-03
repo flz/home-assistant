@@ -15,10 +15,10 @@ import requests
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import ViCareRequiredKeysMixin
+from . import ViCareRequiredKeysMixinWithSet
 from .const import DOMAIN, VICARE_API, VICARE_DEVICE_CONFIG, VICARE_NAME
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,7 +27,9 @@ BUTTON_DHW_ACTIVATE_ONETIME_CHARGE = "activate_onetimecharge"
 
 
 @dataclass
-class ViCareButtonEntityDescription(ButtonEntityDescription, ViCareRequiredKeysMixin):
+class ViCareButtonEntityDescription(
+    ButtonEntityDescription, ViCareRequiredKeysMixinWithSet
+):
     """Describes ViCare button sensor entity."""
 
 
@@ -37,7 +39,8 @@ BUTTON_DESCRIPTIONS: tuple[ViCareButtonEntityDescription, ...] = (
         name="Activate one-time charge",
         icon="mdi:shower-head",
         entity_category=EntityCategory.CONFIG,
-        value_getter=lambda api: api.activateOneTimeCharge(),
+        value_getter=lambda api: api.getOneTimeCharge(),
+        value_setter=lambda api: api.activateOneTimeCharge(),
     ),
 )
 
@@ -54,6 +57,15 @@ async def async_setup_entry(
     entities = []
 
     for description in BUTTON_DESCRIPTIONS:
+        try:
+            description.value_getter(api)
+            _LOGGER.debug("Found entity %s", description.name)
+        except PyViCareNotSupportedFeatureError:
+            _LOGGER.info("Feature not supported %s", description.name)
+            continue
+        except AttributeError:
+            _LOGGER.debug("Attribute Error %s", name)
+            continue
         entity = ViCareButton(
             f"{name} {description.name}",
             api,
@@ -83,7 +95,7 @@ class ViCareButton(ButtonEntity):
         """Handle the button press."""
         try:
             with suppress(PyViCareNotSupportedFeatureError):
-                self.entity_description.value_getter(self._api)
+                self.entity_description.value_setter(self._api)
         except requests.exceptions.ConnectionError:
             _LOGGER.error("Unable to retrieve data from ViCare server")
         except ValueError:
@@ -94,18 +106,18 @@ class ViCareButton(ButtonEntity):
             _LOGGER.error("Invalid data from Vicare server: %s", invalid_data_exception)
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device info for this device."""
-        return {
-            "identifiers": {(DOMAIN, self._device_config.getConfig().serial)},
-            "name": self._device_config.getModel(),
-            "manufacturer": "Viessmann",
-            "model": (DOMAIN, self._device_config.getModel()),
-            "configuration_url": "https://developer.viessmann.com/",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_config.getConfig().serial)},
+            name=self._device_config.getModel(),
+            manufacturer="Viessmann",
+            model=self._device_config.getModel(),
+            configuration_url="https://developer.viessmann.com/",
+        )
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> str:
         """Return unique ID for this device."""
         tmp_id = (
             f"{self._device_config.getConfig().serial}-{self.entity_description.key}"
