@@ -4,7 +4,9 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/iaqualink/",
   "codeowners": ["@flz"],
-  "requirements": ["iaqualink==0.4.1"],
+  "requirements": [
+    "git+https://github.com/flz/iaqualink-py.git#iaqualink==0.5.0.dev"
+  ],
   "iot_class": "cloud_polling",
   "loggers": ["iaqualink"]
 }

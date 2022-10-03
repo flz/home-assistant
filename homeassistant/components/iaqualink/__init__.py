@@ -14,8 +14,8 @@ from iaqualink.device import (
     AqualinkDevice,
     AqualinkLight,
     AqualinkSensor,
+    AqualinkSwitch,
     AqualinkThermostat,
-    AqualinkToggle,
 )
 from iaqualink.exception import AqualinkServiceException
 from typing_extensions import Concatenate, ParamSpec
@@ -115,12 +115,12 @@ async def async_setup_entry(  # noqa: C901
                 climates += [dev]
             elif isinstance(dev, AqualinkLight):
                 lights += [dev]
+            elif isinstance(dev, AqualinkSwitch):
+                switches += [dev]
             elif isinstance(dev, AqualinkBinarySensor):
                 binary_sensors += [dev]
             elif isinstance(dev, AqualinkSensor):
                 sensors += [dev]
-            elif isinstance(dev, AqualinkToggle):
-                switches += [dev]
 
     hass.data[DOMAIN]["client"] = aqualink
 

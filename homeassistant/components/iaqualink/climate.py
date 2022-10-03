@@ -4,8 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from iaqualink.device import AqualinkPump
-
 from homeassistant.components.climate import (
     DOMAIN as CLIMATE_DOMAIN,
     ClimateEntity,
@@ -48,12 +46,6 @@ class HassAqualinkThermostat(AqualinkEntity, ClimateEntity):
     def name(self) -> str:
         """Return the name of the thermostat."""
         return self.dev.label.split(" ")[0]
-
-    @property
-    def pump(self) -> AqualinkPump:
-        """Return the pump device for the current thermostat."""
-        pump = f"{self.name.lower()}_pump"
-        return self.dev.system.devices[pump]
 
     @property
     def hvac_mode(self) -> HVACMode:
