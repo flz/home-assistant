@@ -20,9 +20,7 @@ from iaqualink.device import (
 from iaqualink.exception import AqualinkServiceException
 from typing_extensions import Concatenate, ParamSpec
 
-from homeassistant.components.binary_sensor import (
-    DOMAIN as BINARY_SENSOR_DOMAIN,
-)
+from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
@@ -78,11 +76,13 @@ async def async_setup_entry(  # noqa: C901
         await aqualink.login()
     except AqualinkServiceException as login_exception:
         _LOGGER.error("Failed to login: %s", login_exception)
+        await aqualink.close()
         return False
     except (
         asyncio.TimeoutError,
         aiohttp.client_exceptions.ClientConnectorError,
     ) as aio_exception:
+        await aqualink.close()
         raise ConfigEntryNotReady(
             f"Error while attempting login: {aio_exception}"
         ) from aio_exception
@@ -90,6 +90,7 @@ async def async_setup_entry(  # noqa: C901
     try:
         systems = await aqualink.get_systems()
     except AqualinkServiceException as svc_exception:
+        await aqualink.close()
         raise ConfigEntryNotReady(
             f"Error while attempting to retrieve systems list: {svc_exception}"
         ) from svc_exception
@@ -97,6 +98,7 @@ async def async_setup_entry(  # noqa: C901
     systems = list(systems.values())
     if not systems:
         _LOGGER.error("No systems detected or supported")
+        await aqualink.close()
         return False
 
     for system in systems:
@@ -120,11 +122,11 @@ async def async_setup_entry(  # noqa: C901
             elif isinstance(dev, AqualinkToggle):
                 switches += [dev]
 
+    hass.data[DOMAIN]["client"] = aqualink
+
     platforms = []
     if binary_sensors:
-        _LOGGER.debug(
-            "Got %s binary sensors: %s", len(binary_sensors), binary_sensors
-        )
+        _LOGGER.debug("Got %s binary sensors: %s", len(binary_sensors), binary_sensors)
         platforms.append(Platform.BINARY_SENSOR)
     if climates:
         _LOGGER.debug("Got %s climates: %s", len(climates), climates)
@@ -158,9 +160,7 @@ async def async_setup_entry(  # noqa: C901
             else:
                 cur = system.online
                 if cur is True and prev is not True:
-                    _LOGGER.warning(
-                        "System %s reconnected to iAqualink", system.serial
-                    )
+                    _LOGGER.warning("System %s reconnected to iAqualink", system.serial)
 
             async_dispatcher_send(hass, DOMAIN)
 
@@ -171,15 +171,16 @@ async def async_setup_entry(  # noqa: C901
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    aqualink = hass.data[DOMAIN]["client"]
+    await aqualink.close()
+
     platforms_to_unload = [
         platform for platform in PLATFORMS if platform in hass.data[DOMAIN]
     ]
 
     del hass.data[DOMAIN]
 
-    return await hass.config_entries.async_unload_platforms(
-        entry, platforms_to_unload
-    )
+    return await hass.config_entries.async_unload_platforms(entry, platforms_to_unload)
 
 
 def refresh_system(
@@ -217,9 +218,7 @@ class AqualinkEntity(Entity):
     async def async_added_to_hass(self) -> None:
         """Set up a listener when this entity is added to HA."""
         self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, DOMAIN, self.async_write_ha_state
-            )
+            async_dispatcher_connect(self.hass, DOMAIN, self.async_write_ha_state)
         )
 
     @property
@@ -242,8 +241,8 @@ class AqualinkEntity(Entity):
         """Return the device info."""
         return DeviceInfo(
             identifiers={(DOMAIN, self.unique_id)},
-            manufacturer="Jandy",
-            model=self.dev.__class__.__name__.replace("Aqualink", ""),
+            manufacturer=self.dev.manufacturer,
+            model=self.dev.model,
             name=self.name,
             via_device=(DOMAIN, self.dev.system.serial),
         )
