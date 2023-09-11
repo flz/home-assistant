@@ -16,10 +16,12 @@ from homeassistant.components.humidifier import (
     HumidifierEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KNOWN_DEVICES
+from .connection import HKDevice
 from .entity import HomeKitEntity
 
 HK_MODE_TO_HA = {
@@ -70,6 +72,11 @@ class HomeKitHumidifier(HomeKitEntity, HumidifierEntity):
         return self.service.value(
             CharacteristicsTypes.RELATIVE_HUMIDITY_HUMIDIFIER_THRESHOLD
         )
+
+    @property
+    def current_humidity(self) -> int | None:
+        """Return the current humidity."""
+        return self.service.value(CharacteristicsTypes.RELATIVE_HUMIDITY_CURRENT)
 
     @property
     def mode(self) -> str | None:
@@ -176,6 +183,11 @@ class HomeKitDehumidifier(HomeKitEntity, HumidifierEntity):
         )
 
     @property
+    def current_humidity(self) -> int | None:
+        """Return the current humidity."""
+        return self.service.value(CharacteristicsTypes.RELATIVE_HUMIDITY_CURRENT)
+
+    @property
     def mode(self) -> str | None:
         """Return the current mode, e.g., home, auto, baby.
 
@@ -243,10 +255,15 @@ class HomeKitDehumidifier(HomeKitEntity, HumidifierEntity):
         )
 
     @property
-    def unique_id(self) -> str:
-        """Return the ID of this device."""
+    def old_unique_id(self) -> str:
+        """Return the old ID of this device."""
         serial = self.accessory_info.value(CharacteristicsTypes.SERIAL_NUMBER)
         return f"homekit-{serial}-{self._iid}-{self.device_class}"
+
+    @property
+    def unique_id(self) -> str:
+        """Return the ID of this device."""
+        return f"{self._accessory.unique_id}_{self._iid}_{self.device_class}"
 
 
 async def async_setup_entry(
@@ -255,8 +272,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Homekit humidifer."""
-    hkid = config_entry.data["AccessoryPairingID"]
-    conn = hass.data[KNOWN_DEVICES][hkid]
+    hkid: str = config_entry.data["AccessoryPairingID"]
+    conn: HKDevice = hass.data[KNOWN_DEVICES][hkid]
 
     @callback
     def async_add_service(service: Service) -> bool:
@@ -265,7 +282,7 @@ async def async_setup_entry(
 
         info = {"aid": service.accessory.aid, "iid": service.iid}
 
-        entities: list[HumidifierEntity] = []
+        entities: list[HomeKitHumidifier | HomeKitDehumidifier] = []
 
         if service.has(CharacteristicsTypes.RELATIVE_HUMIDITY_HUMIDIFIER_THRESHOLD):
             entities.append(HomeKitHumidifier(conn, info))
@@ -273,7 +290,12 @@ async def async_setup_entry(
         if service.has(CharacteristicsTypes.RELATIVE_HUMIDITY_DEHUMIDIFIER_THRESHOLD):
             entities.append(HomeKitDehumidifier(conn, info))
 
-        async_add_entities(entities, True)
+        for entity in entities:
+            conn.async_migrate_unique_id(
+                entity.old_unique_id, entity.unique_id, Platform.HUMIDIFIER
+            )
+
+        async_add_entities(entities)
 
         return True
 

@@ -9,7 +9,7 @@ from homeassistant.components.water_heater import (
     WaterHeaterEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -75,8 +75,7 @@ async def async_setup_entry(
         "set_timer",
     )
 
-    if entities:
-        async_add_entities(entities, True)
+    async_add_entities(entities, True)
 
 
 def _generate_entities(tado):
@@ -120,6 +119,10 @@ def create_water_heater_entity(tado, name: str, zone_id: int, zone: str):
 class TadoWaterHeater(TadoZoneEntity, WaterHeaterEntity):
     """Representation of a Tado water heater."""
 
+    _attr_name = None
+    _attr_operation_list = OPERATION_MODES
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+
     def __init__(
         self,
         tado,
@@ -135,7 +138,7 @@ class TadoWaterHeater(TadoZoneEntity, WaterHeaterEntity):
         super().__init__(zone_name, tado.home_id, zone_id)
 
         self.zone_id = zone_id
-        self._unique_id = f"{zone_id} {tado.home_id}"
+        self._attr_unique_id = f"{zone_id} {tado.home_id}"
 
         self._device_is_active = False
 
@@ -168,16 +171,6 @@ class TadoWaterHeater(TadoZoneEntity, WaterHeaterEntity):
         self._async_update_data()
 
     @property
-    def name(self):
-        """Return the name of the entity."""
-        return self.zone_name
-
-    @property
-    def unique_id(self):
-        """Return the unique id."""
-        return self._unique_id
-
-    @property
     def current_operation(self):
         """Return current readable operation mode."""
         return WATER_HEATER_MAP_TADO.get(self._current_tado_hvac_mode)
@@ -191,16 +184,6 @@ class TadoWaterHeater(TadoZoneEntity, WaterHeaterEntity):
     def is_away_mode_on(self):
         """Return true if away mode is on."""
         return self._tado_zone_data.is_away
-
-    @property
-    def operation_list(self):
-        """Return the list of available operation modes (readable)."""
-        return OPERATION_MODES
-
-    @property
-    def temperature_unit(self):
-        """Return the unit of measurement used by the platform."""
-        return TEMP_CELSIUS
 
     @property
     def min_temp(self):

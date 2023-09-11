@@ -17,8 +17,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_WEB_PORT, DEFAULT_NAME, DOMAIN
@@ -80,7 +79,9 @@ class DelugeEntity(CoordinatorEntity[DelugeDataUpdateCoordinator]):
         super().__init__(coordinator)
         self._server_unique_id = coordinator.config_entry.entry_id
         self._attr_device_info = DeviceInfo(
-            configuration_url=f"http://{coordinator.api.host}:{coordinator.api.web_port}",
+            configuration_url=(
+                f"http://{coordinator.api.host}:{coordinator.api.web_port}"
+            ),
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
             manufacturer=DEFAULT_NAME,

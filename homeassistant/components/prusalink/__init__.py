@@ -1,20 +1,20 @@
 """The PrusaLink integration."""
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+import asyncio
 from datetime import timedelta
 import logging
 from time import monotonic
 from typing import Generic, TypeVar
 
-import async_timeout
 from pyprusalink import InvalidAuth, JobInfo, PrinterInfo, PrusaLink, PrusaLinkError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
@@ -60,7 +60,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 T = TypeVar("T", PrinterInfo, JobInfo)
 
 
-class PrusaLinkUpdateCoordinator(DataUpdateCoordinator, Generic[T]):
+class PrusaLinkUpdateCoordinator(DataUpdateCoordinator, Generic[T], ABC):
     """Update coordinator for the printer."""
 
     config_entry: ConfigEntry
@@ -77,7 +77,7 @@ class PrusaLinkUpdateCoordinator(DataUpdateCoordinator, Generic[T]):
     async def _async_update_data(self) -> T:
         """Update the data."""
         try:
-            with async_timeout.timeout(5):
+            async with asyncio.timeout(5):
                 data = await self._fetch_data()
         except InvalidAuth:
             raise UpdateFailed("Invalid authentication") from None

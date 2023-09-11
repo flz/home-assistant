@@ -1,19 +1,24 @@
 """Support for Speedtest.net internet speed testing sensor."""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfDataRate, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SpeedTestDataCoordinator
 from .const import (
     ATTR_BYTES_RECEIVED,
     ATTR_BYTES_SENT,
@@ -24,8 +29,38 @@ from .const import (
     DEFAULT_NAME,
     DOMAIN,
     ICON,
-    SENSOR_TYPES,
-    SpeedtestSensorEntityDescription,
+)
+from .coordinator import SpeedTestDataCoordinator
+
+
+@dataclass
+class SpeedtestSensorEntityDescription(SensorEntityDescription):
+    """Class describing Speedtest sensor entities."""
+
+    value: Callable = round
+
+
+SENSOR_TYPES: tuple[SpeedtestSensorEntityDescription, ...] = (
+    SpeedtestSensorEntityDescription(
+        key="ping",
+        translation_key="ping",
+        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SpeedtestSensorEntityDescription(
+        key="download",
+        translation_key="download",
+        native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+        state_class=SensorStateClass.MEASUREMENT,
+        value=lambda value: round(value / 10**6, 2),
+    ),
+    SpeedtestSensorEntityDescription(
+        key="upload",
+        translation_key="upload",
+        native_unit_of_measurement=UnitOfDataRate.MEGABITS_PER_SECOND,
+        state_class=SensorStateClass.MEASUREMENT,
+        value=lambda value: round(value / 10**6, 2),
+    ),
 )
 
 
@@ -42,6 +77,7 @@ async def async_setup_entry(
     )
 
 
+# pylint: disable-next=hass-invalid-inheritance # needs fixing
 class SpeedtestSensor(
     CoordinatorEntity[SpeedTestDataCoordinator], RestoreEntity, SensorEntity
 ):

@@ -1,10 +1,15 @@
 """Sensor for displaying the number of result from Flume."""
-from numbers import Number
 
 from pyflume import FlumeData
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -14,15 +19,70 @@ from .const import (
     FLUME_AUTH,
     FLUME_DEVICES,
     FLUME_HTTP_SESSION,
-    FLUME_QUERIES_SENSOR,
     FLUME_TYPE_SENSOR,
     KEY_DEVICE_ID,
     KEY_DEVICE_LOCATION,
+    KEY_DEVICE_LOCATION_NAME,
     KEY_DEVICE_LOCATION_TIMEZONE,
     KEY_DEVICE_TYPE,
 )
 from .coordinator import FlumeDeviceDataUpdateCoordinator
 from .entity import FlumeEntity
+from .util import get_valid_flume_devices
+
+FLUME_QUERIES_SENSOR: tuple[SensorEntityDescription, ...] = (
+    SensorEntityDescription(
+        key="current_interval",
+        translation_key="current_interval",
+        suggested_display_precision=2,
+        native_unit_of_measurement=f"{UnitOfVolume.GALLONS}/m",
+    ),
+    SensorEntityDescription(
+        key="month_to_date",
+        translation_key="month_to_date",
+        suggested_display_precision=2,
+        native_unit_of_measurement=UnitOfVolume.GALLONS,
+        device_class=SensorDeviceClass.WATER,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="week_to_date",
+        translation_key="week_to_date",
+        suggested_display_precision=2,
+        native_unit_of_measurement=UnitOfVolume.GALLONS,
+        device_class=SensorDeviceClass.WATER,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="today",
+        translation_key="today",
+        suggested_display_precision=2,
+        native_unit_of_measurement=UnitOfVolume.GALLONS,
+        device_class=SensorDeviceClass.WATER,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    SensorEntityDescription(
+        key="last_60_min",
+        translation_key="last_60_min",
+        suggested_display_precision=2,
+        native_unit_of_measurement=f"{UnitOfVolume.GALLONS}/h",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="last_24_hrs",
+        translation_key="last_24_hrs",
+        suggested_display_precision=2,
+        native_unit_of_measurement=f"{UnitOfVolume.GALLONS}/d",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    SensorEntityDescription(
+        key="last_30_days",
+        translation_key="last_30_days",
+        suggested_display_precision=2,
+        native_unit_of_measurement=f"{UnitOfVolume.GALLONS}/mo",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+)
 
 
 async def async_setup_entry(
@@ -33,21 +93,19 @@ async def async_setup_entry(
     """Set up the Flume sensor."""
 
     flume_domain_data = hass.data[DOMAIN][config_entry.entry_id]
-
+    flume_devices = flume_domain_data[FLUME_DEVICES]
     flume_auth = flume_domain_data[FLUME_AUTH]
     http_session = flume_domain_data[FLUME_HTTP_SESSION]
-    flume_devices = flume_domain_data[FLUME_DEVICES]
-
+    flume_devices = [
+        device
+        for device in get_valid_flume_devices(flume_devices)
+        if device[KEY_DEVICE_TYPE] == FLUME_TYPE_SENSOR
+    ]
     flume_entity_list = []
-    for device in flume_devices.device_list:
-        if (
-            device[KEY_DEVICE_TYPE] != FLUME_TYPE_SENSOR
-            or KEY_DEVICE_LOCATION not in device
-        ):
-            continue
-
+    for device in flume_devices:
         device_id = device[KEY_DEVICE_ID]
         device_timezone = device[KEY_DEVICE_LOCATION][KEY_DEVICE_LOCATION_TIMEZONE]
+        device_location_name = device[KEY_DEVICE_LOCATION][KEY_DEVICE_LOCATION_NAME]
 
         flume_device = FlumeData(
             flume_auth,
@@ -68,28 +126,17 @@ async def async_setup_entry(
                     coordinator=coordinator,
                     description=description,
                     device_id=device_id,
+                    location_name=device_location_name,
                 )
                 for description in FLUME_QUERIES_SENSOR
             ]
         )
 
-    if flume_entity_list:
-        async_add_entities(flume_entity_list)
+    async_add_entities(flume_entity_list)
 
 
-class FlumeSensor(FlumeEntity, SensorEntity):
+class FlumeSensor(FlumeEntity[FlumeDeviceDataUpdateCoordinator], SensorEntity):
     """Representation of the Flume sensor."""
-
-    coordinator: FlumeDeviceDataUpdateCoordinator
-
-    def __init__(
-        self,
-        coordinator: FlumeDeviceDataUpdateCoordinator,
-        device_id: str,
-        description: SensorEntityDescription,
-    ) -> None:
-        """Inlitializer function with type hints."""
-        super().__init__(coordinator, description, device_id)
 
     @property
     def native_value(self):
@@ -98,8 +145,4 @@ class FlumeSensor(FlumeEntity, SensorEntity):
         if sensor_key not in self.coordinator.flume_device.values:
             return None
 
-        return _format_state_value(self.coordinator.flume_device.values[sensor_key])
-
-
-def _format_state_value(value):
-    return round(value, 1) if isinstance(value, Number) else None
+        return self.coordinator.flume_device.values[sensor_key]

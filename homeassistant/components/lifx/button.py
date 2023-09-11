@@ -7,8 +7,8 @@ from homeassistant.components.button import (
     ButtonEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, IDENTIFY, RESTART
@@ -17,14 +17,13 @@ from .entity import LIFXEntity
 
 RESTART_BUTTON_DESCRIPTION = ButtonEntityDescription(
     key=RESTART,
-    name="Restart",
     device_class=ButtonDeviceClass.RESTART,
     entity_category=EntityCategory.CONFIG,
 )
 
 IDENTIFY_BUTTON_DESCRIPTION = ButtonEntityDescription(
     key=IDENTIFY,
-    name="Identify",
+    device_class=ButtonDeviceClass.IDENTIFY,
     entity_category=EntityCategory.CONFIG,
 )
 
@@ -38,14 +37,14 @@ async def async_setup_entry(
     domain_data = hass.data[DOMAIN]
     coordinator: LIFXUpdateCoordinator = domain_data[entry.entry_id]
     async_add_entities(
-        cls(coordinator) for cls in (LIFXRestartButton, LIFXIdentifyButton)
+        [LIFXRestartButton(coordinator), LIFXIdentifyButton(coordinator)]
     )
 
 
 class LIFXButton(LIFXEntity, ButtonEntity):
     """Base LIFX button."""
 
-    _attr_has_entity_name: bool = True
+    _attr_should_poll = False
 
     def __init__(self, coordinator: LIFXUpdateCoordinator) -> None:
         """Initialise a LIFX button."""

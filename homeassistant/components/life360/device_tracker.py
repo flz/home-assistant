@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from contextlib import suppress
 from typing import Any, cast
 
-from homeassistant.components.device_tracker import SourceType
-from homeassistant.components.device_tracker.config_entry import TrackerEntity
+from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_BATTERY_CHARGING
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -87,8 +87,7 @@ async def async_setup_entry(
                 and not new_members_only
             ):
                 new_entities.append(Life360DeviceTracker(coordinator, member_id))
-        if new_entities:
-            async_add_entities(new_entities)
+        async_add_entities(new_entities)
 
     process_data(new_members_only=False)
     entry.async_on_unload(coordinator.async_add_listener(process_data))
@@ -101,6 +100,8 @@ class Life360DeviceTracker(
 
     _attr_attribution = ATTRIBUTION
     _attr_unique_id: str
+    _attr_has_entity_name = True
+    _attr_name = None
 
     def __init__(
         self, coordinator: Life360DataUpdateCoordinator, member_id: str
@@ -112,7 +113,7 @@ class Life360DeviceTracker(
         self._data: Life360Member | None = coordinator.data.members[member_id]
         self._prev_data = self._data
 
-        self._attr_name = self._data.name
+        self._name = self._data.name
         self._attr_entity_picture = self._data.entity_picture
 
         # Server sends a pair of address values on alternate updates. Keep the pair of
@@ -125,6 +126,11 @@ class Life360DeviceTracker(
         if (address := self._data.address) == self._data.place:
             address = None
         self._addresses = [address]
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info."""
+        return DeviceInfo(identifiers={(DOMAIN, self._attr_unique_id)}, name=self._name)
 
     @property
     def _options(self) -> Mapping[str, Any]:
@@ -154,16 +160,20 @@ class Life360DeviceTracker(
             if bad_last_seen or bad_accuracy:
                 if bad_last_seen:
                     LOGGER.warning(
-                        "%s: Ignoring location update because "
-                        "last_seen (%s) < previous last_seen (%s)",
+                        (
+                            "%s: Ignoring location update because "
+                            "last_seen (%s) < previous last_seen (%s)"
+                        ),
                         self.entity_id,
                         last_seen,
                         prev_seen,
                     )
                 if bad_accuracy:
                     LOGGER.warning(
-                        "%s: Ignoring location update because "
-                        "expected GPS accuracy (%0.1f) is not met: %i",
+                        (
+                            "%s: Ignoring location update because "
+                            "expected GPS accuracy (%0.1f) is not met: %i"
+                        ),
                         self.entity_id,
                         max_gps_acc,
                         self.location_accuracy,

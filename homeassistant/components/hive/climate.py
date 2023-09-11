@@ -14,7 +14,7 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS, TEMP_FAHRENHEIT
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -45,7 +45,7 @@ HIVE_TO_HASS_HVAC_ACTION = {
     True: HVACAction.HEATING,
 }
 
-TEMP_UNIT = {"C": TEMP_CELSIUS, "F": TEMP_FAHRENHEIT}
+TEMP_UNIT = {"C": UnitOfTemperature.CELSIUS, "F": UnitOfTemperature.FAHRENHEIT}
 PARALLEL_UPDATES = 0
 SCAN_INTERVAL = timedelta(seconds=15)
 _LOGGER = logging.getLogger()
@@ -65,19 +65,6 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
     platform = entity_platform.async_get_current_platform()
-
-    platform.async_register_entity_service(
-        "boost_heating",
-        {
-            vol.Required(ATTR_TIME_PERIOD): vol.All(
-                cv.time_period,
-                cv.positive_timedelta,
-                lambda td: td.total_seconds() // 60,
-            ),
-            vol.Optional(ATTR_TEMPERATURE, default="25.0"): vol.Coerce(float),
-        },
-        "async_heating_boost",
-    )
 
     platform.async_register_entity_service(
         SERVICE_BOOST_HEATING_ON,
@@ -136,13 +123,6 @@ class HiveClimateEntity(HiveEntity, ClimateEntity):
             curtemp = round((self.current_temperature or 0) * 2) / 2
             temperature = curtemp + 0.5
             await self.hive.heating.setBoostOn(self.device, 30, temperature)
-
-    async def async_heating_boost(self, time_period, temperature):
-        """Handle boost heating service call."""
-        _LOGGER.warning(
-            "Hive Service heating_boost will be removed in 2021.7.0, please update to heating_boost_on"
-        )
-        await self.async_heating_boost_on(time_period, temperature)
 
     @refresh_system
     async def async_heating_boost_on(self, time_period, temperature):

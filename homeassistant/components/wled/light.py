@@ -118,7 +118,9 @@ class WLEDSegmentLight(WLEDEntity, LightEntity):
 
         # Segment 0 uses a simpler name, which is more natural for when using
         # a single segment / using WLED with one big LED strip.
-        if segment != 0:
+        if segment == 0:
+            self._attr_name = None
+        else:
             self._attr_name = f"Segment {segment}"
 
         self._attr_unique_id = (
@@ -270,5 +272,4 @@ def async_update_segments(
         current_ids.add(segment_id)
         new_entities.append(WLEDSegmentLight(coordinator, segment_id))
 
-    if new_entities:
-        async_add_entities(new_entities)
+    async_add_entities(new_entities)

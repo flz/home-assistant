@@ -1,6 +1,5 @@
 """StarLine device tracker."""
-from homeassistant.components.device_tracker import SourceType
-from homeassistant.components.device_tracker.config_entry import TrackerEntity
+from homeassistant.components.device_tracker import SourceType, TrackerEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -26,9 +25,11 @@ async def async_setup_entry(
 class StarlineDeviceTracker(StarlineEntity, TrackerEntity, RestoreEntity):
     """StarLine device tracker."""
 
+    _attr_translation_key = "location"
+
     def __init__(self, account: StarlineAccount, device: StarlineDevice) -> None:
         """Set up StarLine entity."""
-        super().__init__(account, device, "location", "Location")
+        super().__init__(account, device, "location")
 
     @property
     def extra_state_attributes(self):

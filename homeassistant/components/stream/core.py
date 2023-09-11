@@ -5,11 +5,11 @@ import asyncio
 from collections import deque
 from collections.abc import Callable, Coroutine, Iterable
 import datetime
+from enum import IntEnum
 import logging
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
-import async_timeout
 import attr
 import numpy as np
 
@@ -28,11 +28,26 @@ from .const import (
 if TYPE_CHECKING:
     from av import CodecContext, Packet
 
+    from homeassistant.components.camera import DynamicStreamSettings
+
     from . import Stream
 
 _LOGGER = logging.getLogger(__name__)
 
 PROVIDERS: Registry[str, type[StreamOutput]] = Registry()
+
+
+class Orientation(IntEnum):
+    """Orientations for stream transforms. These are based on EXIF orientation tags."""
+
+    NO_TRANSFORM = 1
+    MIRROR = 2
+    ROTATE_180 = 3
+    FLIP = 4
+    ROTATE_LEFT_AND_FLIP = 5
+    ROTATE_LEFT = 6
+    ROTATE_RIGHT_AND_FLIP = 7
+    ROTATE_RIGHT = 8
 
 
 @attr.s(slots=True)
@@ -44,7 +59,6 @@ class StreamSettings:
     part_target_duration: float = attr.ib()
     hls_advance_part_limit: int = attr.ib()
     hls_part_timeout: float = attr.ib()
-    orientation: int = attr.ib()
 
 
 STREAM_SETTINGS_NON_LL_HLS = StreamSettings(
@@ -53,7 +67,6 @@ STREAM_SETTINGS_NON_LL_HLS = StreamSettings(
     part_target_duration=TARGET_SEGMENT_DURATION_NON_LL_HLS,
     hls_advance_part_limit=3,
     hls_part_timeout=TARGET_SEGMENT_DURATION_NON_LL_HLS,
-    orientation=1,
 )
 
 
@@ -132,8 +145,9 @@ class Segment:
         """Render the HLS playlist section for the Segment.
 
         The Segment may still be in progress.
-        This method stores intermediate data in hls_playlist_parts, hls_num_parts_rendered,
-        and hls_playlist_complete to avoid redoing work on subsequent calls.
+        This method stores intermediate data in hls_playlist_parts,
+        hls_num_parts_rendered, and hls_playlist_complete to avoid redoing
+        work on subsequent calls.
         """
         if self.hls_playlist_complete:
             return self.hls_playlist_template[0]
@@ -150,12 +164,14 @@ class Segment:
             ):
                 self.hls_playlist_parts.append(
                     f"#EXT-X-PART:DURATION={part.duration:.3f},URI="
-                    f'"./segment/{self.sequence}.{part_num}.m4s"{",INDEPENDENT=YES" if part.has_keyframe else ""}'
+                    f'"./segment/{self.sequence}.{part_num}.m4s"'
+                    f'{",INDEPENDENT=YES" if part.has_keyframe else ""}'
                 )
         if self.complete:
-            # Construct the final playlist_template. The placeholder will share a line with
-            # the first element to avoid an extra newline when we don't render any parts.
-            # Append an empty string to create a trailing newline when we do render parts
+            # Construct the final playlist_template. The placeholder will share a
+            # line with the first element to avoid an extra newline when we don't
+            # render any parts. Append an empty string to create a trailing newline
+            # when we do render parts
             self.hls_playlist_parts.append("")
             self.hls_playlist_template = (
                 [] if last_stream_id == self.stream_id else ["#EXT-X-DISCONTINUITY"]
@@ -190,9 +206,9 @@ class Segment:
         )
         if not add_hint:
             return playlist
-        # Preload hints help save round trips by informing the client about the next part.
-        # The next part will usually be in this segment but will be first part of the next
-        # segment if this segment is already complete.
+        # Preload hints help save round trips by informing the client about the
+        # next part. The next part will usually be in this segment but will be
+        # first part of the next segment if this segment is already complete.
         if self.complete:  # Next part belongs to next segment
             sequence = self.sequence + 1
             part_num = 0
@@ -259,12 +275,14 @@ class StreamOutput:
         hass: HomeAssistant,
         idle_timer: IdleTimer,
         stream_settings: StreamSettings,
+        dynamic_stream_settings: DynamicStreamSettings,
         deque_maxlen: int | None = None,
     ) -> None:
         """Initialize a stream output."""
         self._hass = hass
         self.idle_timer = idle_timer
         self.stream_settings = stream_settings
+        self.dynamic_stream_settings = dynamic_stream_settings
         self._event = asyncio.Event()
         self._part_event = asyncio.Event()
         self._segments: deque[Segment] = deque(maxlen=deque_maxlen)
@@ -313,7 +331,7 @@ class StreamOutput:
     async def part_recv(self, timeout: float | None = None) -> bool:
         """Wait for an event signalling the latest part segment."""
         try:
-            async with async_timeout.timeout(timeout):
+            async with asyncio.timeout(timeout):
                 await self._part_event.wait()
         except asyncio.TimeoutError:
             return False
@@ -350,15 +368,13 @@ class StreamOutput:
 
 
 class StreamView(HomeAssistantView):
-    """
-    Base StreamView.
+    """Base StreamView.
 
     For implementation of a new stream format, define `url` and `name`
     attributes, and implement `handle` method in a child class.
     """
 
     requires_auth = False
-    platform = None
 
     async def get(
         self, request: web.Request, token: str, sequence: str = "", part_num: str = ""
@@ -400,8 +416,7 @@ TRANSFORM_IMAGE_FUNCTION = (
 
 
 class KeyFrameConverter:
-    """
-    Enables generating and getting an image from the last keyframe seen in the stream.
+    """Enables generating and getting an image from the last keyframe seen in the stream.
 
     An overview of the thread and state interaction:
         the worker thread sets a packet
@@ -413,24 +428,39 @@ class KeyFrameConverter:
     If unsuccessful, get_image will return the previous image
     """
 
-    def __init__(self, hass: HomeAssistant, stream_settings: StreamSettings) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        stream_settings: StreamSettings,
+        dynamic_stream_settings: DynamicStreamSettings,
+    ) -> None:
         """Initialize."""
 
-        # Keep import here so that we can import stream integration without installing reqs
-        # pylint: disable=import-outside-toplevel
+        # Keep import here so that we can import stream integration
+        # without installingreqs
+        # pylint: disable-next=import-outside-toplevel
         from homeassistant.components.camera.img_util import TurboJPEGSingleton
 
-        self.packet: Packet = None
+        self._packet: Packet = None
+        self._event: asyncio.Event = asyncio.Event()
         self._hass = hass
         self._image: bytes | None = None
         self._turbojpeg = TurboJPEGSingleton.instance()
         self._lock = asyncio.Lock()
         self._codec_context: CodecContext | None = None
         self._stream_settings = stream_settings
+        self._dynamic_stream_settings = dynamic_stream_settings
+
+    def stash_keyframe_packet(self, packet: Packet) -> None:
+        """Store the keyframe and set the asyncio.Event from the event loop.
+
+        This is called from the worker thread.
+        """
+        self._packet = packet
+        self._hass.loop.call_soon_threadsafe(self._event.set)
 
     def create_codec_context(self, codec_context: CodecContext) -> None:
-        """
-        Create a codec context to be used for decoding the keyframes.
+        """Create a codec context to be used for decoding the keyframes.
 
         This is run by the worker thread and will only be called once per worker.
         """
@@ -438,8 +468,9 @@ class KeyFrameConverter:
         if self._codec_context:
             return
 
-        # Keep import here so that we can import stream integration without installing reqs
-        # pylint: disable=import-outside-toplevel
+        # Keep import here so that we can import stream integration without
+        # installing reqs
+        # pylint: disable-next=import-outside-toplevel
         from av import CodecContext
 
         self._codec_context = CodecContext.create(codec_context.name, "r")
@@ -453,18 +484,17 @@ class KeyFrameConverter:
         return TRANSFORM_IMAGE_FUNCTION[orientation](image)
 
     def _generate_image(self, width: int | None, height: int | None) -> None:
-        """
-        Generate the keyframe image.
+        """Generate the keyframe image.
 
         This is run in an executor thread, but since it is called within an
         the asyncio lock from the main thread, there will only be one entry
         at a time per instance.
         """
 
-        if not (self._turbojpeg and self.packet and self._codec_context):
+        if not (self._turbojpeg and self._packet and self._codec_context):
             return
-        packet = self.packet
-        self.packet = None
+        packet = self._packet
+        self._packet = None
         for _ in range(2):  # Retry once if codec context needs to be flushed
             try:
                 # decode packet (flush afterwards)
@@ -484,12 +514,13 @@ class KeyFrameConverter:
         if frames:
             frame = frames[0]
             if width and height:
-                if self._stream_settings.orientation >= 5:
+                if self._dynamic_stream_settings.orientation >= 5:
                     frame = frame.reformat(width=height, height=width)
                 else:
                     frame = frame.reformat(width=width, height=height)
             bgr_array = self.transform_image(
-                frame.to_ndarray(format="bgr24"), self._stream_settings.orientation
+                frame.to_ndarray(format="bgr24"),
+                self._dynamic_stream_settings.orientation,
             )
             self._image = bytes(self._turbojpeg.encode(bgr_array))
 
@@ -497,10 +528,14 @@ class KeyFrameConverter:
         self,
         width: int | None = None,
         height: int | None = None,
+        wait_for_next_keyframe: bool = False,
     ) -> bytes | None:
         """Fetch an image from the Stream and return it as a jpeg in bytes."""
 
         # Use a lock to ensure only one thread is working on the keyframe at a time
+        if wait_for_next_keyframe:
+            self._event.clear()
+            await self._event.wait()
         async with self._lock:
             await self._hass.async_add_executor_job(self._generate_image, width, height)
         return self._image

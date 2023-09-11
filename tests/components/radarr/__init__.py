@@ -7,10 +7,6 @@ from aiohttp.client_exceptions import ClientError
 from homeassistant.components.radarr.const import DOMAIN
 from homeassistant.const import (
     CONF_API_KEY,
-    CONF_HOST,
-    CONF_MONITORED_CONDITIONS,
-    CONF_PORT,
-    CONF_SSL,
     CONF_URL,
     CONF_VERIFY_SSL,
     CONTENT_TYPE_JSON,
@@ -32,15 +28,6 @@ MOCK_USER_INPUT = {
     CONF_VERIFY_SSL: False,
 }
 
-CONF_IMPORT_DATA = {
-    CONF_API_KEY: API_KEY,
-    CONF_HOST: "192.168.1.189",
-    CONF_MONITORED_CONDITIONS: ["Stream count"],
-    CONF_PORT: "7887",
-    "urlbase": "/test",
-    CONF_SSL: False,
-}
-
 CONF_DATA = {
     CONF_URL: URL,
     CONF_API_KEY: API_KEY,
@@ -54,6 +41,7 @@ def mock_connection(
     error: bool = False,
     invalid_auth: bool = False,
     windows: bool = False,
+    single_return: bool = False,
 ) -> None:
     """Mock radarr connection."""
     if error:
@@ -88,22 +76,27 @@ def mock_connection(
         headers={"Content-Type": CONTENT_TYPE_JSON},
     )
 
+    root_folder_fixture = "rootfolder-linux"
+
     if windows:
-        aioclient_mock.get(
-            f"{url}/api/v3/rootfolder",
-            text=load_fixture("radarr/rootfolder-windows.json"),
-            headers={"Content-Type": CONTENT_TYPE_JSON},
-        )
-    else:
-        aioclient_mock.get(
-            f"{url}/api/v3/rootfolder",
-            text=load_fixture("radarr/rootfolder-linux.json"),
-            headers={"Content-Type": CONTENT_TYPE_JSON},
-        )
+        root_folder_fixture = "rootfolder-windows"
+
+    if single_return:
+        root_folder_fixture = f"single-{root_folder_fixture}"
+
+    aioclient_mock.get(
+        f"{url}/api/v3/rootfolder",
+        text=load_fixture(f"radarr/{root_folder_fixture}.json"),
+        headers={"Content-Type": CONTENT_TYPE_JSON},
+    )
+
+    movie_fixture = "movie"
+    if single_return:
+        movie_fixture = f"single-{movie_fixture}"
 
     aioclient_mock.get(
         f"{url}/api/v3/movie",
-        text=load_fixture("radarr/movie.json"),
+        text=load_fixture(f"radarr/{movie_fixture}.json"),
         headers={"Content-Type": CONTENT_TYPE_JSON},
     )
 
@@ -152,6 +145,7 @@ async def setup_integration(
     connection_error: bool = False,
     invalid_auth: bool = False,
     windows: bool = False,
+    single_return: bool = False,
 ) -> MockConfigEntry:
     """Set up the radarr integration in Home Assistant."""
     entry = MockConfigEntry(
@@ -172,6 +166,7 @@ async def setup_integration(
         error=connection_error,
         invalid_auth=invalid_auth,
         windows=windows,
+        single_return=single_return,
     )
 
     if not skip_entry_setup:
@@ -196,7 +191,7 @@ def patch_radarr():
 
 
 def create_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create Efergy entry in Home Assistant."""
+    """Create Radarr entry in Home Assistant."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={

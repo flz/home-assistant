@@ -13,16 +13,53 @@ from homeassistant.util import dt as dt_util
 from . import (
     DEFAULT_ENTRY_TITLE,
     IP_ADDRESS,
-    MAC_ADDRESS,
     SERIAL,
     MockLifxCommand,
     _mocked_infrared_bulb,
+    _mocked_light_strip,
     _patch_config_flow_try_connect,
     _patch_device,
     _patch_discovery,
 )
 
 from tests.common import MockConfigEntry, async_fire_time_changed
+
+
+async def test_theme_select(hass: HomeAssistant) -> None:
+    """Test selecting a theme."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=DEFAULT_ENTRY_TITLE,
+        data={CONF_HOST: IP_ADDRESS},
+        unique_id=SERIAL,
+    )
+    config_entry.add_to_hass(hass)
+    bulb = _mocked_light_strip()
+    bulb.product = 38
+    bulb.power_level = 0
+    bulb.color = [0, 0, 65535, 3500]
+    with _patch_discovery(device=bulb), _patch_config_flow_try_connect(
+        device=bulb
+    ), _patch_device(device=bulb):
+        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    entity_id = "select.my_bulb_theme"
+
+    entity_registry = er.async_get(hass)
+    entity = entity_registry.async_get(entity_id)
+    assert entity
+    assert not entity.disabled
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: entity_id, "option": "intense"},
+        blocking=True,
+    )
+
+    assert len(bulb.set_extended_color_zones.calls) == 1
+    bulb.set_extended_color_zones.reset_mock()
 
 
 async def test_infrared_brightness(hass: HomeAssistant) -> None:
@@ -32,7 +69,7 @@ async def test_infrared_brightness(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()
@@ -62,7 +99,7 @@ async def test_set_infrared_brightness_25_percent(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()
@@ -101,7 +138,7 @@ async def test_set_infrared_brightness_50_percent(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()
@@ -140,7 +177,7 @@ async def test_set_infrared_brightness_100_percent(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()
@@ -179,7 +216,7 @@ async def test_disable_infrared(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()
@@ -218,7 +255,7 @@ async def test_invalid_infrared_brightness(hass: HomeAssistant) -> None:
         domain=DOMAIN,
         title=DEFAULT_ENTRY_TITLE,
         data={CONF_HOST: IP_ADDRESS},
-        unique_id=MAC_ADDRESS,
+        unique_id=SERIAL,
     )
     config_entry.add_to_hass(hass)
     bulb = _mocked_infrared_bulb()

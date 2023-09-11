@@ -1,4 +1,4 @@
-"""This component provides basic support for Foscam IP cameras."""
+"""Component providing basic support for Foscam IP cameras."""
 from __future__ import annotations
 
 import asyncio
@@ -11,9 +11,17 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, entity_platform
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_RTSP_PORT, CONF_STREAM, LOGGER, SERVICE_PTZ, SERVICE_PTZ_PRESET
+from .const import (
+    CONF_RTSP_PORT,
+    CONF_STREAM,
+    DOMAIN,
+    LOGGER,
+    SERVICE_PTZ,
+    SERVICE_PTZ_PRESET,
+)
 
 DIR_UP = "up"
 DIR_DOWN = "down"
@@ -94,12 +102,14 @@ async def async_setup_entry(
 class HassFoscamCamera(Camera):
     """An implementation of a Foscam IP camera."""
 
+    _attr_has_entity_name = True
+    _attr_name = None
+
     def __init__(self, camera: FoscamCamera, config_entry: ConfigEntry) -> None:
         """Initialize a Foscam camera."""
         super().__init__()
 
         self._foscam_session = camera
-        self._attr_name = config_entry.title
         self._username = config_entry.data[CONF_USERNAME]
         self._password = config_entry.data[CONF_PASSWORD]
         self._stream = config_entry.data[CONF_STREAM]
@@ -107,6 +117,10 @@ class HassFoscamCamera(Camera):
         self._rtsp_port = config_entry.data[CONF_RTSP_PORT]
         if self._rtsp_port:
             self._attr_supported_features = CameraEntityFeature.STREAM
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, config_entry.entry_id)},
+            manufacturer="Foscam",
+        )
 
     async def async_added_to_hass(self) -> None:
         """Handle entity addition to hass."""
@@ -117,7 +131,10 @@ class HassFoscamCamera(Camera):
 
         if ret == -3:
             LOGGER.info(
-                "Can't get motion detection status, camera %s configured with non-admin user",
+                (
+                    "Can't get motion detection status, camera %s configured with"
+                    " non-admin user"
+                ),
                 self.name,
             )
 
@@ -156,7 +173,10 @@ class HassFoscamCamera(Camera):
             if ret != 0:
                 if ret == -3:
                     LOGGER.info(
-                        "Can't set motion detection status, camera %s configured with non-admin user",
+                        (
+                            "Can't set motion detection status, camera %s configured"
+                            " with non-admin user"
+                        ),
                         self.name,
                     )
                 return
@@ -164,7 +184,10 @@ class HassFoscamCamera(Camera):
             self._attr_motion_detection_enabled = True
         except TypeError:
             LOGGER.debug(
-                "Failed enabling motion detection on '%s'. Is it supported by the device?",
+                (
+                    "Failed enabling motion detection on '%s'. Is it supported by the"
+                    " device?"
+                ),
                 self.name,
             )
 
@@ -176,7 +199,10 @@ class HassFoscamCamera(Camera):
             if ret != 0:
                 if ret == -3:
                     LOGGER.info(
-                        "Can't set motion detection status, camera %s configured with non-admin user",
+                        (
+                            "Can't set motion detection status, camera %s configured"
+                            " with non-admin user"
+                        ),
                         self.name,
                     )
                 return
@@ -184,7 +210,10 @@ class HassFoscamCamera(Camera):
             self._attr_motion_detection_enabled = False
         except TypeError:
             LOGGER.debug(
-                "Failed disabling motion detection on '%s'. Is it supported by the device?",
+                (
+                    "Failed disabling motion detection on '%s'. Is it supported by the"
+                    " device?"
+                ),
                 self.name,
             )
 

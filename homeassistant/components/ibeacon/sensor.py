@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import LENGTH_METERS, SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT, UnitOfLength
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -27,7 +27,7 @@ from .entity import IBeaconEntity
 class IBeaconRequiredKeysMixin:
     """Mixin for required keys."""
 
-    value_fn: Callable[[iBeaconAdvertisement], int | None]
+    value_fn: Callable[[iBeaconAdvertisement], str | int | None]
 
 
 @dataclass
@@ -38,7 +38,6 @@ class IBeaconSensorEntityDescription(SensorEntityDescription, IBeaconRequiredKey
 SENSOR_DESCRIPTIONS = (
     IBeaconSensorEntityDescription(
         key="rssi",
-        name="Signal Strength",
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         entity_registry_enabled_default=False,
@@ -47,7 +46,7 @@ SENSOR_DESCRIPTIONS = (
     ),
     IBeaconSensorEntityDescription(
         key="power",
-        name="Power",
+        translation_key="power",
         device_class=SensorDeviceClass.SIGNAL_STRENGTH,
         native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
         entity_registry_enabled_default=False,
@@ -56,12 +55,18 @@ SENSOR_DESCRIPTIONS = (
     ),
     IBeaconSensorEntityDescription(
         key="estimated_distance",
-        name="Estimated Distance",
+        translation_key="estimated_distance",
         icon="mdi:signal-distance-variant",
-        native_unit_of_measurement=LENGTH_METERS,
+        native_unit_of_measurement=UnitOfLength.METERS,
         value_fn=lambda ibeacon_advertisement: ibeacon_advertisement.distance,
         state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.DISTANCE,
+    ),
+    IBeaconSensorEntityDescription(
+        key="vendor",
+        translation_key="vendor",
+        entity_registry_enabled_default=False,
+        value_fn=lambda ibeacon_advertisement: ibeacon_advertisement.vendor,
     ),
 )
 
@@ -132,6 +137,6 @@ class IBeaconSensorEntity(IBeaconEntity, SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def native_value(self) -> int | None:
+    def native_value(self) -> str | int | None:
         """Return the state of the sensor."""
         return self.entity_description.value_fn(self._ibeacon_advertisement)

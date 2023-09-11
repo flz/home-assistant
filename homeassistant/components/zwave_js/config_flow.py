@@ -1,20 +1,26 @@
 """Config flow for Z-Wave JS integration."""
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import asyncio
 import logging
 from typing import Any
 
 import aiohttp
-from async_timeout import timeout
 from serial.tools import list_ports
 import voluptuous as vol
 from zwave_js_server.version import VersionInfo, get_server_version
 
 from homeassistant import config_entries, exceptions
 from homeassistant.components import usb
-from homeassistant.components.hassio import HassioServiceInfo, is_hassio
+from homeassistant.components.hassio import (
+    AddonError,
+    AddonInfo,
+    AddonManager,
+    AddonState,
+    HassioServiceInfo,
+    is_hassio,
+)
 from homeassistant.components.zeroconf import ZeroconfServiceInfo
 from homeassistant.const import CONF_NAME, CONF_URL
 from homeassistant.core import HomeAssistant, callback
@@ -27,8 +33,9 @@ from homeassistant.data_entry_flow import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import disconnect_client
-from .addon import AddonError, AddonInfo, AddonManager, AddonState, get_addon_manager
+from .addon import get_addon_manager
 from .const import (
+    ADDON_SLUG,
     CONF_ADDON_DEVICE,
     CONF_ADDON_EMULATE_HARDWARE,
     CONF_ADDON_LOG_LEVEL,
@@ -107,7 +114,7 @@ async def validate_input(hass: HomeAssistant, user_input: dict) -> VersionInfo:
 async def async_get_version_info(hass: HomeAssistant, ws_address: str) -> VersionInfo:
     """Return Z-Wave JS version info."""
     try:
-        async with timeout(SERVER_VERSION_TIMEOUT):
+        async with asyncio.timeout(SERVER_VERSION_TIMEOUT):
             version_info: VersionInfo = await get_server_version(
                 ws_address, async_get_clientsession(hass)
             )
@@ -125,15 +132,20 @@ def get_usb_ports() -> dict[str, str]:
     ports = list_ports.comports()
     port_descriptions = {}
     for port in ports:
-        usb_device = usb.usb_device_from_port(port)
-        dev_path = usb.get_serial_by_id(usb_device.device)
+        vid: str | None = None
+        pid: str | None = None
+        if port.vid is not None and port.pid is not None:
+            usb_device = usb.usb_device_from_port(port)
+            vid = usb_device.vid
+            pid = usb_device.pid
+        dev_path = usb.get_serial_by_id(port.device)
         human_name = usb.human_readable_device_name(
             dev_path,
-            usb_device.serial_number,
-            usb_device.manufacturer,
-            usb_device.description,
-            usb_device.vid,
-            usb_device.pid,
+            port.serial_number,
+            port.manufacturer,
+            port.description,
+            vid,
+            pid,
         )
         port_descriptions[dev_path] = human_name
     return port_descriptions
@@ -144,7 +156,7 @@ async def async_get_usb_ports(hass: HomeAssistant) -> dict[str, str]:
     return await hass.async_add_executor_job(get_usb_ports)
 
 
-class BaseZwaveJSFlow(FlowHandler):
+class BaseZwaveJSFlow(FlowHandler, ABC):
     """Represent the base config flow for Z-Wave JS."""
 
     def __init__(self) -> None:
@@ -402,7 +414,6 @@ class ConfigFlow(BaseZwaveJSFlow, config_entries.ConfigFlow, domain=DOMAIN):
         vid = discovery_info.vid
         pid = discovery_info.pid
         serial_number = discovery_info.serial_number
-        device = discovery_info.device
         manufacturer = discovery_info.manufacturer
         description = discovery_info.description
         # Zooz uses this vid/pid, but so do 2652 sticks
@@ -417,7 +428,7 @@ class ConfigFlow(BaseZwaveJSFlow, config_entries.ConfigFlow, domain=DOMAIN):
             f"{vid}:{pid}_{serial_number}_{manufacturer}_{description}"
         )
         self._abort_if_unique_id_configured()
-        dev_path = await self.hass.async_add_executor_job(usb.get_serial_by_id, device)
+        dev_path = discovery_info.device
         self.usb_path = dev_path
         self._title = usb.human_readable_device_name(
             dev_path,
@@ -491,6 +502,9 @@ class ConfigFlow(BaseZwaveJSFlow, config_entries.ConfigFlow, domain=DOMAIN):
         """
         if self._async_in_progress():
             return self.async_abort(reason="already_in_progress")
+
+        if discovery_info.slug != ADDON_SLUG:
+            return self.async_abort(reason="not_zwave_js_addon")
 
         self.ws_address = (
             f"ws://{discovery_info.config['host']}:{discovery_info.config['port']}"

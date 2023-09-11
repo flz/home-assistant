@@ -1,4 +1,4 @@
-"""This library brings support for forked_daapd to Home Assistant."""
+"""Support forked_daapd media player."""
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +6,6 @@ from collections import defaultdict
 import logging
 from typing import Any
 
-import async_timeout
 from pyforked_daapd import ForkedDaapdAPI
 from pylibrespot_java import LibrespotJavaAPI
 
@@ -17,6 +16,7 @@ from homeassistant.components.media_player import (
     BrowseMedia,
     MediaPlayerEnqueue,
     MediaPlayerEntity,
+    MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
     async_process_play_media_url,
@@ -30,6 +30,7 @@ from homeassistant.components.spotify import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -126,10 +127,10 @@ async def async_setup_entry(
     forked_daapd_updater = ForkedDaapdUpdater(
         hass, forked_daapd_api, config_entry.entry_id
     )
-    await forked_daapd_updater.async_init()
     hass.data[DOMAIN][config_entry.entry_id][
         HASS_DATA_UPDATER_KEY
     ] = forked_daapd_updater
+    await forked_daapd_updater.async_init()
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -236,7 +237,7 @@ class ForkedDaapdZone(MediaPlayerEntity):
         await self._api.set_volume(volume=volume * 100, output_id=self._output_id)
 
     @property
-    def supported_features(self):
+    def supported_features(self) -> MediaPlayerEntityFeature:
         """Flag media player features that are supported."""
         return SUPPORTED_FEATURES_ZONE
 
@@ -558,7 +559,7 @@ class ForkedDaapdMaster(MediaPlayerEntity):
         return self._player["shuffle"]
 
     @property
-    def supported_features(self):
+    def supported_features(self) -> MediaPlayerEntityFeature:
         """Flag media player features that are supported."""
         return SUPPORTED_FEATURES
 
@@ -652,8 +653,10 @@ class ForkedDaapdMaster(MediaPlayerEntity):
             futures = []
             for output in self._outputs:
                 futures.append(
-                    self.api.change_output(
-                        output["id"], selected=True, volume=self._tts_volume * 100
+                    asyncio.create_task(
+                        self.api.change_output(
+                            output["id"], selected=True, volume=self._tts_volume * 100
+                        )
                     )
                 )
             await asyncio.wait(futures)
@@ -663,7 +666,7 @@ class ForkedDaapdMaster(MediaPlayerEntity):
         self._pause_requested = True
         await self.async_media_pause()
         try:
-            async with async_timeout.timeout(CALLBACK_TIMEOUT):
+            async with asyncio.timeout(CALLBACK_TIMEOUT):
                 await self._paused_event.wait()  # wait for paused
         except asyncio.TimeoutError:
             self._pause_requested = False
@@ -758,7 +761,7 @@ class ForkedDaapdMaster(MediaPlayerEntity):
         await sleep_future
         await self.api.add_to_queue(uris=media_id, playback="start", clear=True)
         try:
-            async with async_timeout.timeout(TTS_TIMEOUT):
+            async with asyncio.timeout(TTS_TIMEOUT):
                 await self._tts_playing_event.wait()
             # we have started TTS, now wait for completion
         except asyncio.TimeoutError:
@@ -833,7 +836,7 @@ class ForkedDaapdMaster(MediaPlayerEntity):
 
     async def async_browse_media(
         self,
-        media_content_type: str | None = None,
+        media_content_type: MediaType | str | None = None,
         media_content_id: str | None = None,
     ) -> BrowseMedia:
         """Implement the websocket media browsing helper."""
@@ -870,7 +873,7 @@ class ForkedDaapdMaster(MediaPlayerEntity):
 
     async def async_get_browse_image(
         self,
-        media_content_type: str,
+        media_content_type: MediaType | str,
         media_content_id: str,
         media_image_id: str | None = None,
     ) -> tuple[bytes | None, str | None]:
@@ -911,7 +914,8 @@ class ForkedDaapdUpdater:
 
     async def async_init(self):
         """Perform async portion of class initialization."""
-        server_config = await self._api.get_request("config")
+        if not (server_config := await self._api.get_request("config")):
+            raise PlatformNotReady
         if websocket_port := server_config.get("websocket_port"):
             self.websocket_handler = asyncio.create_task(
                 self._api.start_websocket_handler(
@@ -925,7 +929,8 @@ class ForkedDaapdUpdater:
         else:
             _LOGGER.error("Invalid websocket port")
 
-    def _disconnected_callback(self):
+    async def _disconnected_callback(self):
+        """Send update signals when the websocket gets disconnected."""
         async_dispatcher_send(
             self.hass, SIGNAL_UPDATE_MASTER.format(self._entry_id), False
         )

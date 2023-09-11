@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# pylint: disable=import-error
 from decora_wifi import DecoraWiFiSession
 from decora_wifi.models.person import Person
 from decora_wifi.models.residence import Residence
@@ -112,11 +111,11 @@ class DecoraWifiLight(LightEntity):
         return {self.color_mode}
 
     @property
-    def supported_features(self) -> int:
+    def supported_features(self) -> LightEntityFeature:
         """Return supported features."""
         if self._switch.canSetLevel:
             return LightEntityFeature.TRANSITION
-        return 0
+        return LightEntityFeature(0)
 
     @property
     def name(self):

@@ -28,8 +28,7 @@ from homeassistant.const import (
     CONF_USERNAME,
     PRECISION_HALVES,
     STATE_ON,
-    TEMP_CELSIUS,
-    TEMP_FAHRENHEIT,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
@@ -108,6 +107,7 @@ class VenstarThermostat(VenstarEntity, ClimateEntity):
     _attr_fan_modes = [FAN_ON, FAN_AUTO]
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.COOL, HVACMode.OFF, HVACMode.AUTO]
     _attr_precision = PRECISION_HALVES
+    _attr_name = None
 
     def __init__(
         self,
@@ -122,10 +122,9 @@ class VenstarThermostat(VenstarEntity, ClimateEntity):
             HVACMode.AUTO: self._client.MODE_AUTO,
         }
         self._attr_unique_id = config.entry_id
-        self._attr_name = self._client.name
 
     @property
-    def supported_features(self) -> int:
+    def supported_features(self) -> ClimateEntityFeature:
         """Return the list of supported features."""
         features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
@@ -145,8 +144,8 @@ class VenstarThermostat(VenstarEntity, ClimateEntity):
     def temperature_unit(self) -> str:
         """Return the unit of measurement, as defined by the API."""
         if self._client.tempunits == self._client.TEMPUNITS_F:
-            return TEMP_FAHRENHEIT
-        return TEMP_CELSIUS
+            return UnitOfTemperature.FAHRENHEIT
+        return UnitOfTemperature.CELSIUS
 
     @property
     def current_temperature(self):
@@ -292,8 +291,10 @@ class VenstarThermostat(VenstarEntity, ClimateEntity):
             else:
                 success = False
                 _LOGGER.error(
-                    "The thermostat is currently not in a mode "
-                    "that supports target temperature: %s",
+                    (
+                        "The thermostat is currently not in a mode "
+                        "that supports target temperature: %s"
+                    ),
                     operation_mode,
                 )
 

@@ -14,13 +14,13 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_CLIENT_ID,
-    PRESSURE_BAR,
-    TEMP_CELSIUS,
-    TIME_HOURS,
-    VOLUME_LITERS,
+    EntityCategory,
+    UnitOfPressure,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
@@ -46,7 +46,7 @@ class JustNimbusEntityDescription(
 SENSOR_TYPES = (
     JustNimbusEntityDescription(
         key="pump_flow",
-        name="Pump flow",
+        translation_key="pump_flow",
         icon="mdi:pump",
         native_unit_of_measurement=VOLUME_FLOW_RATE_LITERS_PER_MINUTE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -55,7 +55,7 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="drink_flow",
-        name="Drink flow",
+        translation_key="drink_flow",
         icon="mdi:water-pump",
         native_unit_of_measurement=VOLUME_FLOW_RATE_LITERS_PER_MINUTE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -64,8 +64,8 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="pump_pressure",
-        name="Pump pressure",
-        native_unit_of_measurement=PRESSURE_BAR,
+        translation_key="pump_pressure",
+        native_unit_of_measurement=UnitOfPressure.BAR,
         device_class=SensorDeviceClass.PRESSURE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -73,7 +73,7 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="pump_starts",
-        name="Pump starts",
+        translation_key="pump_starts",
         icon="mdi:restart",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -81,18 +81,18 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="pump_hours",
-        name="Pump hours",
+        translation_key="pump_hours",
         icon="mdi:clock",
         device_class=SensorDeviceClass.DURATION,
-        native_unit_of_measurement=TIME_HOURS,
+        native_unit_of_measurement=UnitOfTime.HOURS,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda coordinator: coordinator.data.pump_hours,
     ),
     JustNimbusEntityDescription(
         key="reservoir_temp",
-        name="Reservoir Temperature",
-        native_unit_of_measurement=TEMP_CELSIUS,
+        translation_key="reservoir_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -100,9 +100,9 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="reservoir_content",
-        name="Reservoir content",
+        translation_key="reservoir_content",
         icon="mdi:car-coolant-level",
-        native_unit_of_measurement=VOLUME_LITERS,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -110,9 +110,9 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="total_saved",
-        name="Total saved",
+        translation_key="total_saved",
         icon="mdi:water-opacity",
-        native_unit_of_measurement=VOLUME_LITERS,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -120,9 +120,9 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="total_replenished",
-        name="Total replenished",
+        translation_key="total_replenished",
         icon="mdi:water",
-        native_unit_of_measurement=VOLUME_LITERS,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -130,7 +130,7 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="error_code",
-        name="Error code",
+        translation_key="error_code",
         icon="mdi:bug",
         entity_registry_enabled_default=False,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -138,9 +138,9 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="totver",
-        name="Total use",
+        translation_key="total_use",
         icon="mdi:chart-donut",
-        native_unit_of_measurement=VOLUME_LITERS,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -148,9 +148,9 @@ SENSOR_TYPES = (
     ),
     JustNimbusEntityDescription(
         key="reservoir_content_max",
-        name="Max reservoir content",
+        translation_key="reservoir_content_max",
         icon="mdi:waves",
-        native_unit_of_measurement=VOLUME_LITERS,
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         device_class=SensorDeviceClass.VOLUME,
         state_class=SensorStateClass.TOTAL,
         entity_category=EntityCategory.DIAGNOSTIC,

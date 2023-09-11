@@ -24,7 +24,7 @@ from homeassistant.const import (
     STATE_ALARM_TRIGGERED,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import LocalData, RiscoDataUpdateCoordinator, is_local
@@ -40,7 +40,7 @@ from .const import (
     RISCO_GROUPS,
     RISCO_PARTIAL_ARM,
 )
-from .entity import RiscoEntity
+from .entity import RiscoCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,6 +88,8 @@ class RiscoAlarm(AlarmControlPanelEntity):
     """Representation of a Risco cloud partition."""
 
     _attr_code_format = CodeFormat.NUMBER
+    _attr_has_entity_name = True
+    _attr_name = None
 
     def __init__(
         self,
@@ -107,9 +109,6 @@ class RiscoAlarm(AlarmControlPanelEntity):
         self._code_disarm_required = options[CONF_CODE_DISARM_REQUIRED]
         self._risco_to_ha = options[CONF_RISCO_STATES_TO_HA]
         self._ha_to_risco = options[CONF_HA_STATES_TO_RISCO]
-        self._attr_supported_features = 0
-        self._attr_has_entity_name = True
-        self._attr_name = None
         for state in self._ha_to_risco:
             self._attr_supported_features |= STATES_TO_SUPPORTED_FEATURES[state]
 
@@ -178,7 +177,7 @@ class RiscoAlarm(AlarmControlPanelEntity):
         raise NotImplementedError
 
 
-class RiscoCloudAlarm(RiscoAlarm, RiscoEntity):
+class RiscoCloudAlarm(RiscoAlarm, RiscoCloudEntity):
     """Representation of a Risco partition."""
 
     def __init__(

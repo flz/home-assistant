@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Any
 from urllib.parse import urlparse
 
+from aiounifi.interfaces.sites import Sites
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -33,18 +34,15 @@ from .const import (
     CONF_ALLOW_BANDWIDTH_SENSORS,
     CONF_ALLOW_UPTIME_SENSORS,
     CONF_BLOCK_CLIENT,
-    CONF_CONTROLLER,
     CONF_DETECTION_TIME,
     CONF_DPI_RESTRICTIONS,
     CONF_IGNORE_WIRED_BUG,
-    CONF_POE_CLIENTS,
     CONF_SITE_ID,
     CONF_SSID_FILTER,
     CONF_TRACK_CLIENTS,
     CONF_TRACK_DEVICES,
     CONF_TRACK_WIRED_CLIENTS,
     DEFAULT_DPI_RESTRICTIONS,
-    DEFAULT_POE_CLIENTS,
     DOMAIN as UNIFI_DOMAIN,
 )
 from .controller import UniFiController, get_unifi_controller
@@ -66,6 +64,8 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
 
     VERSION = 1
 
+    sites: Sites
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -77,8 +77,6 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
     def __init__(self) -> None:
         """Initialize the UniFi Network flow."""
         self.config: dict[str, Any] = {}
-        self.site_ids: dict[str, str] = {}
-        self.site_names: dict[str, str] = {}
         self.reauth_config_entry: config_entries.ConfigEntry | None = None
         self.reauth_schema: dict[vol.Marker, Any] = {}
 
@@ -89,7 +87,6 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
         errors = {}
 
         if user_input is not None:
-
             self.config = {
                 CONF_HOST: user_input[CONF_HOST],
                 CONF_USERNAME: user_input[CONF_USERNAME],
@@ -103,7 +100,8 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
                 controller = await get_unifi_controller(
                     self.hass, MappingProxyType(self.config)
                 )
-                sites = await controller.sites()
+                await controller.sites.update()
+                self.sites = controller.sites
 
             except AuthenticationRequired:
                 errors["base"] = "faulty_credentials"
@@ -112,12 +110,10 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
                 errors["base"] = "service_unavailable"
 
             else:
-                self.site_ids = {site["_id"]: site["name"] for site in sites.values()}
-                self.site_names = {site["_id"]: site["desc"] for site in sites.values()}
-
                 if (
                     self.reauth_config_entry
-                    and self.reauth_config_entry.unique_id in self.site_names
+                    and self.reauth_config_entry.unique_id is not None
+                    and self.reauth_config_entry.unique_id in self.sites
                 ):
                     return await self.async_step_site(
                         {CONF_SITE_ID: self.reauth_config_entry.unique_id}
@@ -151,11 +147,8 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
     ) -> FlowResult:
         """Select site to control."""
         if user_input is not None:
-
             unique_id = user_input[CONF_SITE_ID]
-            self.config[CONF_SITE_ID] = self.site_ids[unique_id]
-            # Backwards compatible config
-            self.config[CONF_CONTROLLER] = self.config.copy()
+            self.config[CONF_SITE_ID] = self.sites[unique_id].name
 
             config_entry = await self.async_set_unique_id(unique_id)
             abort_reason = "configuration_updated"
@@ -178,19 +171,16 @@ class UnifiFlowHandler(config_entries.ConfigFlow, domain=UNIFI_DOMAIN):
                 await self.hass.config_entries.async_reload(config_entry.entry_id)
                 return self.async_abort(reason=abort_reason)
 
-            site_nice_name = self.site_names[unique_id]
+            site_nice_name = self.sites[unique_id].description
             return self.async_create_entry(title=site_nice_name, data=self.config)
 
-        if len(self.site_names) == 1:
-            return await self.async_step_site(
-                {CONF_SITE_ID: next(iter(self.site_names))}
-            )
+        if len(self.sites.values()) == 1:
+            return await self.async_step_site({CONF_SITE_ID: next(iter(self.sites))})
 
+        site_names = {site.site_id: site.description for site in self.sites.values()}
         return self.async_show_form(
             step_id="site",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_SITE_ID): vol.In(self.site_names)}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_SITE_ID): vol.In(site_names)}),
         )
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
@@ -315,11 +305,12 @@ class UnifiOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_client_control()
 
         ssids = (
-            set(self.controller.api.wlans)
+            {wlan.name for wlan in self.controller.api.wlans.values()}
             | {
                 f"{wlan.name}{wlan.name_combine_suffix}"
                 for wlan in self.controller.api.wlans.values()
                 if not wlan.name_combine_enabled
+                and wlan.name_combine_suffix is not None
             }
             | {
                 wlan["name"]
@@ -396,10 +387,6 @@ class UnifiOptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_BLOCK_CLIENT, default=selected_clients_to_block
                     ): cv.multi_select(clients_to_block),
-                    vol.Optional(
-                        CONF_POE_CLIENTS,
-                        default=self.options.get(CONF_POE_CLIENTS, DEFAULT_POE_CLIENTS),
-                    ): bool,
                     vol.Optional(
                         CONF_DPI_RESTRICTIONS,
                         default=self.options.get(

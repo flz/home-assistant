@@ -1,7 +1,7 @@
 """Base Entity for JustNimbus sensors."""
 from __future__ import annotations
 
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -12,6 +12,8 @@ class JustNimbusEntity(
     CoordinatorEntity[JustNimbusCoordinator],
 ):
     """Defines a base JustNimbus entity."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -30,4 +32,4 @@ class JustNimbusEntity(
     @property
     def available(self) -> bool:
         """Return device availability."""
-        return super().available and getattr(self.coordinator.data, "error_code") == 0
+        return super().available and self.coordinator.data is not None

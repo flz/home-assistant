@@ -1,6 +1,8 @@
 """The Lidarr component."""
 from __future__ import annotations
 
+from typing import Any
+
 from aiopyarr.lidarr_client import LidarrClient
 from aiopyarr.models.host_configuration import PyArrHostConfiguration
 
@@ -8,8 +10,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_URL, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity import DeviceInfo, EntityDescription
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DEFAULT_NAME, DOMAIN
@@ -18,6 +20,7 @@ from .coordinator import (
     LidarrDataUpdateCoordinator,
     QueueDataUpdateCoordinator,
     StatusDataUpdateCoordinator,
+    T,
     WantedDataUpdateCoordinator,
 )
 
@@ -36,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session=async_get_clientsession(hass, host_configuration.verify_ssl),
         request_timeout=60,
     )
-    coordinators: dict[str, LidarrDataUpdateCoordinator] = {
+    coordinators: dict[str, LidarrDataUpdateCoordinator[Any]] = {
         "disk_space": DiskSpaceDataUpdateCoordinator(hass, host_configuration, lidarr),
         "queue": QueueDataUpdateCoordinator(hass, host_configuration, lidarr),
         "status": StatusDataUpdateCoordinator(hass, host_configuration, lidarr),
@@ -63,13 +66,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-class LidarrEntity(CoordinatorEntity[LidarrDataUpdateCoordinator]):
+class LidarrEntity(CoordinatorEntity[LidarrDataUpdateCoordinator[T]]):
     """Defines a base Lidarr entity."""
 
     _attr_has_entity_name = True
 
     def __init__(
-        self, coordinator: LidarrDataUpdateCoordinator, description: EntityDescription
+        self,
+        coordinator: LidarrDataUpdateCoordinator[T],
+        description: EntityDescription,
     ) -> None:
         """Initialize the Lidarr entity."""
         super().__init__(coordinator)
@@ -80,6 +85,6 @@ class LidarrEntity(CoordinatorEntity[LidarrDataUpdateCoordinator]):
             entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
             manufacturer=DEFAULT_NAME,
-            name=DEFAULT_NAME,
+            name=coordinator.config_entry.title,
             sw_version=coordinator.system_version,
         )

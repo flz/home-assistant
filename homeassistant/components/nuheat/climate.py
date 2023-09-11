@@ -1,7 +1,5 @@
 """Support for NuHeat thermostats."""
-from datetime import datetime
 import logging
-import time
 from typing import Any
 
 from nuheat.config import SCHEDULE_HOLD, SCHEDULE_RUN, SCHEDULE_TEMPORARY_HOLD
@@ -20,23 +18,14 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS, TEMP_FAHRENHEIT
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import event as event_helper
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import (
-    DOMAIN,
-    MANUFACTURER,
-    NUHEAT_API_STATE_SHIFT_DELAY,
-    NUHEAT_DATETIME_FORMAT,
-    NUHEAT_KEY_HOLD_SET_POINT_DATE_TIME,
-    NUHEAT_KEY_SCHEDULE_MODE,
-    NUHEAT_KEY_SET_POINT_TEMP,
-    TEMP_HOLD_TIME_SEC,
-)
+from .const import DOMAIN, MANUFACTURER, NUHEAT_API_STATE_SHIFT_DELAY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +75,9 @@ class NuHeatThermostat(CoordinatorEntity, ClimateEntity):
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
     )
+    _attr_has_entity_name = True
+    _attr_name = None
+    _attr_preset_modes = PRESET_MODES
 
     def __init__(self, coordinator, thermostat, temperature_unit):
         """Initialize the thermostat."""
@@ -94,19 +86,15 @@ class NuHeatThermostat(CoordinatorEntity, ClimateEntity):
         self._temperature_unit = temperature_unit
         self._schedule_mode = None
         self._target_temperature = None
-
-    @property
-    def name(self):
-        """Return the name of the thermostat."""
-        return self._thermostat.room
+        self._attr_unique_id = thermostat.serial_number
 
     @property
     def temperature_unit(self) -> str:
         """Return the unit of measurement."""
         if self._temperature_unit == "C":
-            return TEMP_CELSIUS
+            return UnitOfTemperature.CELSIUS
 
-        return TEMP_FAHRENHEIT
+        return UnitOfTemperature.FAHRENHEIT
 
     @property
     def current_temperature(self):
@@ -115,11 +103,6 @@ class NuHeatThermostat(CoordinatorEntity, ClimateEntity):
             return self._thermostat.celsius
 
         return self._thermostat.fahrenheit
-
-    @property
-    def unique_id(self):
-        """Return the unique id."""
-        return self._thermostat.serial_number
 
     @property
     def available(self) -> bool:
@@ -174,11 +157,6 @@ class NuHeatThermostat(CoordinatorEntity, ClimateEntity):
         """Return current preset mode."""
         return SCHEDULE_MODE_TO_PRESET_MODE_MAP.get(self._schedule_mode, PRESET_RUN)
 
-    @property
-    def preset_modes(self):
-        """Return available preset modes."""
-        return PRESET_MODES
-
     def set_preset_mode(self, preset_mode: str) -> None:
         """Update the hold mode of the thermostat."""
         self._set_schedule_mode(
@@ -225,22 +203,9 @@ class NuHeatThermostat(CoordinatorEntity, ClimateEntity):
             target_schedule_mode,
         )
 
-        target_temperature = max(
-            min(self._thermostat.max_temperature, target_temperature),
-            self._thermostat.min_temperature,
+        self._thermostat.set_target_temperature(
+            target_temperature, target_schedule_mode
         )
-
-        request = {
-            NUHEAT_KEY_SET_POINT_TEMP: target_temperature,
-            NUHEAT_KEY_SCHEDULE_MODE: target_schedule_mode,
-        }
-
-        if target_schedule_mode == SCHEDULE_TEMPORARY_HOLD:
-            request[NUHEAT_KEY_HOLD_SET_POINT_DATE_TIME] = datetime.fromtimestamp(
-                time.time() + TEMP_HOLD_TIME_SEC
-            ).strftime(NUHEAT_DATETIME_FORMAT)
-
-        self._thermostat.set_data(request)
         self._schedule_mode = target_schedule_mode
         self._target_temperature = target_temperature
         self._schedule_update()

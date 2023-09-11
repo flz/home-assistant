@@ -1,12 +1,12 @@
 """Binary sensor platform for hvv_departures."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
 
 from aiohttp import ClientConnectorError
-import async_timeout
 from pygti.exceptions import InvalidAuth
 
 from homeassistant.components.binary_sensor import (
@@ -14,9 +14,8 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ATTRIBUTION
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -48,16 +47,15 @@ async def async_setup_entry(
 
         for partial_station in station_information.get("partialStations", []):
             for elevator in partial_station.get("elevators", []):
-
                 state = elevator.get("state") != "READY"
                 available = elevator.get("state") != "UNKNOWN"
                 label = elevator.get("label")
                 description = elevator.get("description")
 
                 if label is not None:
-                    name = f"Elevator {label} at {station_name}"
+                    name = f"Elevator {label}"
                 else:
-                    name = f"Unknown elevator at {station_name}"
+                    name = "Unknown elevator"
 
                 if description is not None:
                     name += f" ({description})"
@@ -78,7 +76,6 @@ async def async_setup_entry(
                         "button_type": elevator.get("buttonType"),
                         "cause": elevator.get("cause"),
                         "lines": lines,
-                        ATTR_ATTRIBUTION: ATTRIBUTION,
                     },
                 }
         return elevators
@@ -90,10 +87,10 @@ async def async_setup_entry(
         so entities can quickly look up their data.
         """
 
-        payload = {"station": station}
+        payload = {"station": {"id": station["id"], "type": station["type"]}}
 
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 return get_elevator_entities_from_station_information(
                     station_name, await hub.gti.stationInformation(payload)
                 )
@@ -126,6 +123,9 @@ async def async_setup_entry(
 class HvvDepartureBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """HVVDepartureBinarySensor class."""
 
+    _attr_attribution = ATTRIBUTION
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator, idx, config_entry):
         """Initialize."""
         super().__init__(coordinator)
@@ -150,6 +150,7 @@ class HvvDepartureBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def device_info(self):
         """Return the device info for this sensor."""
         return DeviceInfo(
+            entry_type=DeviceEntryType.SERVICE,
             identifiers={
                 (
                     DOMAIN,

@@ -80,11 +80,11 @@ class DIRECTVMediaPlayer(DIRECTVEntity, MediaPlayerEntity):
         """Initialize DirecTV media player."""
         super().__init__(
             dtv=dtv,
+            name=name,
             address=address,
         )
 
         self._attr_unique_id = self._device_id
-        self._attr_name = name
         self._attr_device_class = MediaPlayerDeviceClass.RECEIVER
         self._attr_available = False
 
@@ -112,7 +112,8 @@ class DIRECTVMediaPlayer(DIRECTVEntity, MediaPlayerEntity):
             self._paused = self._last_position == self._program.position
             self._is_recorded = self._program.recorded
             self._last_position = self._program.position
-            self._last_update = state.at
+            if not self._paused:
+                self._last_update = dt_util.utcnow()
             self._attr_assumed_state = self._is_recorded
 
     @property
@@ -237,7 +238,7 @@ class DIRECTVMediaPlayer(DIRECTVEntity, MediaPlayerEntity):
         return self._program.channel
 
     @property
-    def supported_features(self):
+    def supported_features(self) -> MediaPlayerEntityFeature:
         """Flag media player features that are supported."""
         return SUPPORT_DTV_CLIENT if self._is_client else SUPPORT_DTV
 

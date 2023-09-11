@@ -1,4 +1,4 @@
-"""This platform allows several lights to be grouped into one light."""
+"""Platform allowing several lights to be grouped into one light."""
 from __future__ import annotations
 
 from collections import Counter
@@ -12,13 +12,13 @@ from homeassistant.components import light
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
-    ATTR_COLOR_TEMP,
+    ATTR_COLOR_TEMP_KELVIN,
     ATTR_EFFECT,
     ATTR_EFFECT_LIST,
     ATTR_FLASH,
     ATTR_HS_COLOR,
-    ATTR_MAX_MIREDS,
-    ATTR_MIN_MIREDS,
+    ATTR_MAX_COLOR_TEMP_KELVIN,
+    ATTR_MIN_COLOR_TEMP_KELVIN,
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
@@ -44,10 +44,9 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import GroupEntity
@@ -111,10 +110,23 @@ async def async_setup_entry(
     )
 
 
+@callback
+def async_create_preview_light(
+    name: str, validated_config: dict[str, Any]
+) -> LightGroup:
+    """Create a preview sensor."""
+    return LightGroup(
+        None,
+        name,
+        validated_config[CONF_ENTITIES],
+        validated_config.get(CONF_ALL, False),
+    )
+
+
 FORWARDED_ATTRIBUTES = frozenset(
     {
         ATTR_BRIGHTNESS,
-        ATTR_COLOR_TEMP,
+        ATTR_COLOR_TEMP_KELVIN,
         ATTR_EFFECT,
         ATTR_FLASH,
         ATTR_HS_COLOR,
@@ -133,12 +145,12 @@ class LightGroup(GroupEntity, LightEntity):
 
     _attr_available = False
     _attr_icon = "mdi:lightbulb-group"
-    _attr_max_mireds = 500
-    _attr_min_mireds = 154
+    _attr_max_color_temp_kelvin = 6500
+    _attr_min_color_temp_kelvin = 2000
     _attr_should_poll = False
 
     def __init__(
-        self, unique_id: str | None, name: str, entity_ids: list[str], mode: str | None
+        self, unique_id: str | None, name: str, entity_ids: list[str], mode: bool | None
     ) -> None:
         """Initialize a light group."""
         self._entity_ids = entity_ids
@@ -149,23 +161,6 @@ class LightGroup(GroupEntity, LightEntity):
         self.mode = any
         if mode:
             self.mode = all
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks."""
-
-        @callback
-        def async_state_changed_listener(event: Event) -> None:
-            """Handle child updates."""
-            self.async_set_context(event.context)
-            self.async_defer_or_update_ha_state()
-
-        self.async_on_remove(
-            async_track_state_change_event(
-                self.hass, self._entity_ids, async_state_changed_listener
-            )
-        )
-
-        await super().async_added_to_hass()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Forward the turn_on command to all lights in the light group."""
@@ -239,12 +234,14 @@ class LightGroup(GroupEntity, LightEntity):
             on_states, ATTR_XY_COLOR, reduce=mean_tuple
         )
 
-        self._attr_color_temp = reduce_attribute(on_states, ATTR_COLOR_TEMP)
-        self._attr_min_mireds = reduce_attribute(
-            states, ATTR_MIN_MIREDS, default=154, reduce=min
+        self._attr_color_temp_kelvin = reduce_attribute(
+            on_states, ATTR_COLOR_TEMP_KELVIN
         )
-        self._attr_max_mireds = reduce_attribute(
-            states, ATTR_MAX_MIREDS, default=500, reduce=max
+        self._attr_min_color_temp_kelvin = reduce_attribute(
+            states, ATTR_MIN_COLOR_TEMP_KELVIN, default=2000, reduce=min
+        )
+        self._attr_max_color_temp_kelvin = reduce_attribute(
+            states, ATTR_MAX_COLOR_TEMP_KELVIN, default=6500, reduce=max
         )
 
         self._attr_effect_list = None
@@ -285,7 +282,7 @@ class LightGroup(GroupEntity, LightEntity):
                 set[str], set().union(*all_supported_color_modes)
             )
 
-        self._attr_supported_features = 0
+        self._attr_supported_features = LightEntityFeature(0)
         for support in find_state_attributes(states, ATTR_SUPPORTED_FEATURES):
             # Merge supported features by emulating support for every feature
             # we find.

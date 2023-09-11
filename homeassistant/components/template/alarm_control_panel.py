@@ -189,9 +189,9 @@ class AlarmControlPanelTemplate(TemplateEntity, AlarmControlPanelEntity):
         return self._state
 
     @property
-    def supported_features(self) -> int:
+    def supported_features(self) -> AlarmControlPanelEntityFeature:
         """Return the list of supported features."""
-        supported_features = 0
+        supported_features = AlarmControlPanelEntityFeature(0)
         if self._arm_night_script is not None:
             supported_features = (
                 supported_features | AlarmControlPanelEntityFeature.ARM_NIGHT
@@ -254,13 +254,14 @@ class AlarmControlPanelTemplate(TemplateEntity, AlarmControlPanelEntity):
         )
         self._state = None
 
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks."""
+    @callback
+    def _async_setup_templates(self) -> None:
+        """Set up templates."""
         if self._template:
             self.add_template_attribute(
                 "_state", self._template, None, self._update_state
             )
-        await super().async_added_to_hass()
+        super()._async_setup_templates()
 
     async def _async_alarm_arm(self, state, script, code):
         """Arm the panel to specified state with supplied script."""

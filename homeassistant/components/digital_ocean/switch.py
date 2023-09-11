@@ -7,7 +7,6 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components.switch import PLATFORM_SCHEMA, SwitchEntity
-from homeassistant.const import ATTR_ATTRIBUTION
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -62,7 +61,9 @@ def setup_platform(
 class DigitalOceanSwitch(SwitchEntity):
     """Representation of a Digital Ocean droplet switch."""
 
-    def __init__(self, do, droplet_id):  # pylint: disable=invalid-name
+    _attr_attribution = ATTRIBUTION
+
+    def __init__(self, do, droplet_id):
         """Initialize a new Digital Ocean sensor."""
         self._digital_ocean = do
         self._droplet_id = droplet_id
@@ -83,7 +84,6 @@ class DigitalOceanSwitch(SwitchEntity):
     def extra_state_attributes(self):
         """Return the state attributes of the Digital Ocean droplet."""
         return {
-            ATTR_ATTRIBUTION: ATTRIBUTION,
             ATTR_CREATED_AT: self.data.created_at,
             ATTR_DROPLET_ID: self.data.id,
             ATTR_DROPLET_NAME: self.data.name,

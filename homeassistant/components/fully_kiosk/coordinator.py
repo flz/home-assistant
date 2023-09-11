@@ -1,8 +1,7 @@
-"""Provides the The Fully Kiosk Browser DataUpdateCoordinator."""
+"""Provides the Fully Kiosk Browser DataUpdateCoordinator."""
 import asyncio
 from typing import Any, cast
 
-from async_timeout import timeout
 from fullykiosk import FullyKiosk
 from fullykiosk.exceptions import FullyKioskError
 
@@ -36,7 +35,7 @@ class FullyKioskDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via library."""
         try:
-            async with timeout(15):
+            async with asyncio.timeout(15):
                 # Get device info and settings in parallel
                 result = await asyncio.gather(
                     self.fully.getDeviceInfo(), self.fully.getSettings()

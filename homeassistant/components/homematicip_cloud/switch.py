@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homematicip.aio.device import (
+    AsyncBrandSwitch2,
     AsyncBrandSwitchMeasuring,
     AsyncDinRailSwitch,
     AsyncDinRailSwitch4,
@@ -77,13 +78,15 @@ async def async_setup_entry(
         elif isinstance(device, AsyncPrintedCircuitBoardSwitch2):
             for channel in range(1, 3):
                 entities.append(HomematicipMultiSwitch(hap, device, channel=channel))
+        elif isinstance(device, AsyncBrandSwitch2):
+            for channel in range(1, 3):
+                entities.append(HomematicipMultiSwitch(hap, device, channel=channel))
 
     for group in hap.home.groups:
         if isinstance(group, (AsyncExtendedLinkedSwitchingGroup, AsyncSwitchingGroup)):
             entities.append(HomematicipGroupSwitch(hap, group))
 
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(entities)
 
 
 class HomematicipMultiSwitch(HomematicipGenericEntity, SwitchEntity):

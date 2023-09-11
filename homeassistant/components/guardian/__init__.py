@@ -23,9 +23,9 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.entity import DeviceInfo, EntityDescription
-from homeassistant.helpers.issue_registry import IssueSeverity, async_create_issue
+from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -44,15 +44,11 @@ from .util import GuardianDataUpdateCoordinator
 
 DATA_PAIRED_SENSOR_MANAGER = "paired_sensor_manager"
 
-SERVICE_NAME_DISABLE_AP = "disable_ap"
-SERVICE_NAME_ENABLE_AP = "enable_ap"
 SERVICE_NAME_PAIR_SENSOR = "pair_sensor"
 SERVICE_NAME_UNPAIR_SENSOR = "unpair_sensor"
 SERVICE_NAME_UPGRADE_FIRMWARE = "upgrade_firmware"
 
 SERVICES = (
-    SERVICE_NAME_DISABLE_AP,
-    SERVICE_NAME_ENABLE_AP,
     SERVICE_NAME_PAIR_SENSOR,
     SERVICE_NAME_UNPAIR_SENSOR,
     SERVICE_NAME_UPGRADE_FIRMWARE,
@@ -109,45 +105,6 @@ def async_get_entry_id_for_service_call(hass: HomeAssistant, call: ServiceCall) 
             return entry_id
 
     raise ValueError(f"No config entry for device ID: {device_id}")
-
-
-@callback
-def async_log_deprecated_service_call(
-    hass: HomeAssistant,
-    call: ServiceCall,
-    alternate_service: str,
-    alternate_target: str,
-    breaks_in_ha_version: str,
-) -> None:
-    """Log a warning about a deprecated service call."""
-    deprecated_service = f"{call.domain}.{call.service}"
-
-    async_create_issue(
-        hass,
-        DOMAIN,
-        f"deprecated_service_{deprecated_service}",
-        breaks_in_ha_version=breaks_in_ha_version,
-        is_fixable=True,
-        is_persistent=True,
-        severity=IssueSeverity.WARNING,
-        translation_key="deprecated_service",
-        translation_placeholders={
-            "alternate_service": alternate_service,
-            "alternate_target": alternate_target,
-            "deprecated_service": deprecated_service,
-        },
-    )
-
-    LOGGER.warning(
-        (
-            'The "%s" service is deprecated and will be removed in %s; use the "%s" '
-            'service and pass it a target entity ID of "%s"'
-        ),
-        deprecated_service,
-        breaks_in_ha_version,
-        alternate_service,
-        alternate_target,
-    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -232,30 +189,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return wrapper
 
     @call_with_data
-    async def async_disable_ap(call: ServiceCall, data: GuardianData) -> None:
-        """Disable the onboard AP."""
-        async_log_deprecated_service_call(
-            hass,
-            call,
-            "switch.turn_off",
-            f"switch.guardian_valve_controller_{entry.data[CONF_UID]}_onboard_ap",
-            "2022.12.0",
-        )
-        await data.client.wifi.disable_ap()
-
-    @call_with_data
-    async def async_enable_ap(call: ServiceCall, data: GuardianData) -> None:
-        """Enable the onboard AP."""
-        async_log_deprecated_service_call(
-            hass,
-            call,
-            "switch.turn_on",
-            f"switch.guardian_valve_controller_{entry.data[CONF_UID]}_onboard_ap",
-            "2022.12.0",
-        )
-        await data.client.wifi.enable_ap()
-
-    @call_with_data
     async def async_pair_sensor(call: ServiceCall, data: GuardianData) -> None:
         """Add a new paired sensor."""
         uid = call.data[CONF_UID]
@@ -279,8 +212,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     for service_name, schema, method in (
-        (SERVICE_NAME_DISABLE_AP, SERVICE_BASE_SCHEMA, async_disable_ap),
-        (SERVICE_NAME_ENABLE_AP, SERVICE_BASE_SCHEMA, async_enable_ap),
         (
             SERVICE_NAME_PAIR_SENSOR,
             SERVICE_PAIR_UNPAIR_SENSOR_SCHEMA,
@@ -352,10 +283,11 @@ class PairedSensorManager:
             """Define a callback for when new paired sensor data is received."""
             self._hass.async_create_task(self.async_process_latest_paired_sensor_uids())
 
-        cancel_process_task = self._sensor_pair_dump_coordinator.async_add_listener(
-            async_create_process_task
+        self._entry.async_on_unload(
+            self._sensor_pair_dump_coordinator.async_add_listener(
+                async_create_process_task
+            )
         )
-        self._entry.async_on_unload(cancel_process_task)
 
     async def async_pair_sensor(self, uid: str) -> None:
         """Add a new paired sensor coordinator."""

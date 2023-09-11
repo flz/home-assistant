@@ -35,6 +35,10 @@ class BondButtonEntityDescription(
 ):
     """Class to describe a Bond Button entity."""
 
+    # BondEntity does not support UNDEFINED,
+    # restrict the type to str | None
+    name: str | None = None
+
 
 STOP_BUTTON = BondButtonEntityDescription(
     key=Action.STOP,
@@ -274,8 +278,7 @@ async def async_setup_entry(
             )
         entities.extend(device_entities)
 
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(entities)
 
 
 class BondButtonEntity(BondEntity, ButtonEntity):
