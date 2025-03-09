@@ -9,5 +9,6 @@
   "requirements": [
     "git+https://github.com/flz/iaqualink-py.git@exo#iaqualink==0.5.1",
     "h2==4.1.0"
-  ]
+  ],
+  "single_config_entry": true
 }

@@ -23,6 +23,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import (
     CONNECTION_NETWORK_MAC,
+    DeviceEntry,
     DeviceRegistry,
     format_mac,
 )
@@ -39,13 +40,15 @@ async def init_integration(
     sleep_period=0,
     options: dict[str, Any] | None = None,
     skip_setup: bool = False,
+    data: dict[str, Any] | None = None,
 ) -> MockConfigEntry:
     """Set up the Shelly integration in Home Assistant."""
-    data = {
-        CONF_HOST: "192.168.1.37",
-        CONF_SLEEP_PERIOD: sleep_period,
-        "model": model,
-    }
+    if data is None:
+        data = {
+            CONF_HOST: "192.168.1.37",
+            CONF_SLEEP_PERIOD: sleep_period,
+            "model": model,
+        }
     if gen is not None:
         data[CONF_GEN] = gen
 
@@ -111,6 +114,7 @@ def register_entity(
     unique_id: str,
     config_entry: ConfigEntry | None = None,
     capabilities: Mapping[str, Any] | None = None,
+    device_id: str | None = None,
 ) -> str:
     """Register enabled entity, return entity_id."""
     entity_registry = er.async_get(hass)
@@ -122,6 +126,7 @@ def register_entity(
         disabled_by=None,
         config_entry=config_entry,
         capabilities=capabilities,
+        device_id=device_id,
     )
     return f"{domain}.{object_id}"
 
@@ -145,9 +150,18 @@ def get_entity_state(hass: HomeAssistant, entity_id: str) -> str:
     return entity.state
 
 
-def register_device(device_registry: DeviceRegistry, config_entry: ConfigEntry) -> None:
+def get_entity_attribute(hass: HomeAssistant, entity_id: str, attribute: str) -> str:
+    """Return entity attribute."""
+    entity = hass.states.get(entity_id)
+    assert entity
+    return entity.attributes[attribute]
+
+
+def register_device(
+    device_registry: DeviceRegistry, config_entry: ConfigEntry
+) -> DeviceEntry:
     """Register Shelly device."""
-    device_registry.async_get_or_create(
+    return device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         connections={(CONNECTION_NETWORK_MAC, format_mac(MOCK_MAC))},
     )

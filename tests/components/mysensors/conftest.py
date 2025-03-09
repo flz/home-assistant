@@ -53,7 +53,7 @@ def gateway_nodes_fixture() -> dict[int, Sensor]:
 async def serial_transport_fixture(
     gateway_nodes: dict[int, Sensor],
     is_serial_port: MagicMock,
-) -> AsyncGenerator[dict[int, Sensor]]:
+) -> AsyncGenerator[MagicMock]:
     """Mock a serial transport."""
     with (
         patch(
@@ -141,7 +141,7 @@ async def integration_fixture(
     config: dict[str, Any] = {}
     config_entry.add_to_hass(hass)
     with patch(
-        "homeassistant.components.mysensors.device.Debouncer", autospec=True
+        "homeassistant.components.mysensors.entity.Debouncer", autospec=True
     ) as debouncer_class:
 
         def debouncer(
