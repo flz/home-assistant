@@ -39,7 +39,7 @@
 # name: test_setup[sensor.ph-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
-      'friendly_name': 'Ph',
+      'friendly_name': 'pH',
     }),
     'context': <ANY>,
     'entity_id': 'sensor.ph',

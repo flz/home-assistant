@@ -10,6 +10,7 @@ from iaqualink.exception import (
     AqualinkServiceException,
     AqualinkServiceUnauthorizedException,
 )
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import IaquaAuxSwitch
 from iaqualink.systems.iaqua.system import IaquaSystem
 import pytest
@@ -60,8 +61,8 @@ async def _setup_switch(
 ) -> tuple[IaquaSystem, object, str, object]:
     """Set up the integration with a single switch entity."""
     system = get_aqualink_system(client, cls=IaquaSystem)
-    system.online = True
-    system.update = AsyncMock()
+    system._status = SystemStatus.ONLINE
+    system.refresh = AsyncMock()
     switch = get_aqualink_device(
         system,
         name=label.lower().replace(" ", "_"),

@@ -22,7 +22,10 @@
             }),
           }),
         }),
-        'online': True,
+        'status': dict({
+          '__type': "<enum 'SystemStatus'>",
+          'repr': '<SystemStatus.ONLINE: 2>',
+        }),
       }),
     ]),
   })

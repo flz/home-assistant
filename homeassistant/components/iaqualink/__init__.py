@@ -10,10 +10,14 @@ import httpx
 from iaqualink.client import AqualinkClient
 from iaqualink.device import (
     AqualinkBinarySensor,
+    AqualinkClimate,
+    AqualinkFan,
     AqualinkLight,
+    AqualinkNumber,
+    AqualinkSelect,
     AqualinkSensor,
     AqualinkSwitch,
-    AqualinkThermostat,
+    AqualinkVacuum,
 )
 from iaqualink.exception import (
     AqualinkServiceException,
@@ -35,7 +39,6 @@ from homeassistant.util.ssl import SSL_ALPN_HTTP11_HTTP2
 from .const import DOMAIN
 from .coordinator import AqualinkDataUpdateCoordinator
 from .entity import AqualinkEntity
-from .utils import error_detail
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,9 +48,13 @@ PARALLEL_UPDATES = 0
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
+    Platform.FAN,
     Platform.LIGHT,
+    Platform.NUMBER,
+    Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.VACUUM,
 ]
 
 type AqualinkConfigEntry = ConfigEntry[AqualinkRuntimeData]
@@ -61,10 +68,31 @@ class AqualinkRuntimeData:
     coordinators: dict[str, AqualinkDataUpdateCoordinator]
     # These will contain the initialized devices
     binary_sensors: list[AqualinkBinarySensor]
+    climates: list[AqualinkClimate]
+    fans: list[AqualinkFan]
     lights: list[AqualinkLight]
+    numbers: list[AqualinkNumber]
+    selects: list[AqualinkSelect]
     sensors: list[AqualinkSensor]
     switches: list[AqualinkSwitch]
-    thermostats: list[AqualinkThermostat]
+    vacuums: list[AqualinkVacuum]
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries."""
+    if entry.version == 1 and entry.minor_version < 2:
+        hass.config_entries.async_update_entry(
+            entry,
+            minor_version=2,
+        )
+
+    _LOGGER.info(
+        "Migration to configuration version %s.%s successful",
+        entry.version,
+        entry.minor_version,
+    )
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> bool:
@@ -87,8 +115,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
     except (AqualinkServiceException, TimeoutError, httpx.HTTPError) as aio_exception:
         await aqualink.close()
         raise ConfigEntryNotReady(
-            f"Error while attempting login: {error_detail(aio_exception)}"
+            f"Error while attempting login: {aio_exception}"
         ) from aio_exception
+
+    account_id = aqualink.user_id
+    if entry.unique_id != account_id:
+        conflicting_entry = next(
+            (
+                existing_entry
+                for existing_entry in hass.config_entries.async_entries(DOMAIN)
+                if existing_entry.entry_id != entry.entry_id
+                and existing_entry.unique_id == account_id
+            ),
+            None,
+        )
+        if conflicting_entry is not None:
+            await aqualink.close()
+            raise ConfigEntryError(
+                "Another iAquaLink config entry already uses this account"
+            )
+        hass.config_entries.async_update_entry(entry, unique_id=account_id)
 
     try:
         systems = await aqualink.get_systems()
@@ -97,11 +143,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
         raise ConfigEntryAuthFailed(
             "Invalid credentials for iAquaLink"
         ) from auth_exception
-    except (AqualinkServiceException, TimeoutError, httpx.HTTPError) as svc_exception:
+    except AqualinkServiceException as svc_exception:
         await aqualink.close()
         raise ConfigEntryNotReady(
-            "Error while attempting to retrieve systems list: "
-            f"{error_detail(svc_exception)}"
+            f"Error while attempting to retrieve systems list: {svc_exception}"
         ) from svc_exception
 
     systems_list = list(systems.values())
@@ -113,19 +158,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
         aqualink,
         coordinators={},
         binary_sensors=[],
+        climates=[],
+        fans=[],
         lights=[],
+        numbers=[],
+        selects=[],
         sensors=[],
         switches=[],
-        thermostats=[],
+        vacuums=[],
     )
     for system in systems_list:
+        if not system.supported:
+            _LOGGER.warning(
+                "Unsupported system type %s (serial %s), skipping",
+                system.serial,
+                system.serial,
+            )
+            continue
+
         coordinator = AqualinkDataUpdateCoordinator(hass, entry, system)
-        runtime_data.coordinators[system.serial] = coordinator
         try:
             await coordinator.async_config_entry_first_refresh()
         except ConfigEntryAuthFailed:
             await aqualink.close()
             raise
+        except ConfigEntryNotReady:
+            _LOGGER.warning(
+                "System %s is not available; skipping device enumeration",
+                system.serial,
+            )
+            continue
 
         try:
             devices = await system.get_devices()
@@ -134,16 +196,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
             raise ConfigEntryAuthFailed(
                 "Invalid credentials for iAquaLink"
             ) from auth_exception
-        except (
-            AqualinkServiceException,
-            TimeoutError,
-            httpx.HTTPError,
-        ) as svc_exception:
-            await aqualink.close()
-            raise ConfigEntryNotReady(
-                "Error while attempting to retrieve devices list: "
-                f"{error_detail(svc_exception)}"
-            ) from svc_exception
+        except AqualinkServiceException as svc_exception:
+            _LOGGER.warning(
+                "Unable to retrieve devices for system %s: %s",
+                system.serial,
+                svc_exception,
+            )
+            continue
+
+        runtime_data.coordinators[system.serial] = coordinator
 
         device_registry = dr.async_get(hass)
         device_registry.async_get_or_create(
@@ -155,10 +216,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
         )
 
         for dev in devices.values():
-            if isinstance(dev, AqualinkThermostat):
-                runtime_data.thermostats += [dev]
+            if isinstance(dev, AqualinkVacuum):
+                runtime_data.vacuums += [dev]
+            elif isinstance(dev, AqualinkClimate):
+                runtime_data.climates += [dev]
+            elif isinstance(dev, AqualinkFan):
+                runtime_data.fans += [dev]
             elif isinstance(dev, AqualinkLight):
                 runtime_data.lights += [dev]
+            elif isinstance(dev, AqualinkNumber):
+                runtime_data.numbers += [dev]
+            elif isinstance(dev, AqualinkSelect):
+                runtime_data.selects += [dev]
             elif isinstance(dev, AqualinkSwitch):
                 runtime_data.switches += [dev]
             elif isinstance(dev, AqualinkBinarySensor):
@@ -171,16 +240,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: AqualinkConfigEntry) -> 
         len(runtime_data.binary_sensors),
         runtime_data.binary_sensors,
     )
+    _LOGGER.debug(
+        "Got %s climates: %s", len(runtime_data.climates), runtime_data.climates
+    )
+    _LOGGER.debug("Got %s fans: %s", len(runtime_data.fans), runtime_data.fans)
     _LOGGER.debug("Got %s lights: %s", len(runtime_data.lights), runtime_data.lights)
+    _LOGGER.debug("Got %s numbers: %s", len(runtime_data.numbers), runtime_data.numbers)
+    _LOGGER.debug("Got %s selects: %s", len(runtime_data.selects), runtime_data.selects)
     _LOGGER.debug("Got %s sensors: %s", len(runtime_data.sensors), runtime_data.sensors)
     _LOGGER.debug(
         "Got %s switches: %s", len(runtime_data.switches), runtime_data.switches
     )
-    _LOGGER.debug(
-        "Got %s thermostats: %s",
-        len(runtime_data.thermostats),
-        runtime_data.thermostats,
-    )
+    _LOGGER.debug("Got %s vacuums: %s", len(runtime_data.vacuums), runtime_data.vacuums)
 
     entry.runtime_data = runtime_data
 

@@ -1,17 +1,18 @@
 """Configuration for iAquaLink tests."""
 
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, PropertyMock, patch
+from unittest.mock import AsyncMock, patch
 
 from iaqualink.client import AqualinkClient
 from iaqualink.device import AqualinkDevice
-from iaqualink.system import AqualinkSystem
+from iaqualink.system import AqualinkSystem, SystemStatus
 from iaqualink.systems.iaqua.device import (
     IaquaAuxSwitch,
     IaquaBinarySensor,
+    IaquaClimate,
+    IaquaHeatPumpMode,
     IaquaLightSwitch,
     IaquaSensor,
-    IaquaThermostat,
 )
 from iaqualink.systems.iaqua.system import IaquaSystem
 import pytest
@@ -26,6 +27,7 @@ from tests.common import MockConfigEntry
 
 MOCK_USERNAME = "test@example.com"
 MOCK_PASSWORD = "password"
+MOCK_USER_ID = "account-123"
 MOCK_DATA = {CONF_USERNAME: MOCK_USERNAME, CONF_PASSWORD: MOCK_PASSWORD}
 
 
@@ -38,9 +40,10 @@ class SystemDevices:
     light: IaquaLightSwitch
     binary_sensor: IaquaBinarySensor
     sensor: IaquaSensor
-    thermostat: IaquaThermostat
+    thermostat: IaquaClimate
     heater: IaquaAuxSwitch
     pool_temp: IaquaSensor
+    heat_pump_mode: IaquaHeatPumpMode
 
 
 @pytest.fixture(name="client")
@@ -74,12 +77,12 @@ async def setup_integration(
         cls=IaquaSystem,
         data={"home_screen": [{}, {}, {}, {"temp_scale": "F"}]},
     )
-    system.online = True
+    system._status = SystemStatus.ONLINE
 
-    async def update() -> None:
+    async def refresh() -> None:
         system.temp_unit = "F"
 
-    system.update = AsyncMock(side_effect=update)
+    system.refresh = AsyncMock(side_effect=refresh)
 
     switch = get_aqualink_device(
         system, name="aux_1", cls=IaquaAuxSwitch, data={"state": "1", "aux": "1"}
@@ -97,7 +100,7 @@ async def setup_integration(
         system, name="ph", cls=IaquaSensor, data={"state": "7.2"}
     )
     thermostat = get_aqualink_device(
-        system, name="pool_set_point", cls=IaquaThermostat, data={"state": "84"}
+        system, name="pool_set_point", cls=IaquaClimate, data={"state": "84"}
     )
     heater = get_aqualink_device(
         system, name="pool_heater", cls=IaquaAuxSwitch, data={"state": "1", "aux": "3"}
@@ -105,9 +108,16 @@ async def setup_integration(
     pool_temp = get_aqualink_device(
         system, name="pool_temp", cls=IaquaSensor, data={"state": "80"}
     )
+    heat_pump_mode = get_aqualink_device(
+        system,
+        name="heatpump_mode",
+        cls=IaquaHeatPumpMode,
+        data={"state": "heat"},
+    )
 
     platform_devices = {
-        d.name: d for d in (switch, light, binary_sensor, sensor, thermostat)
+        d.name: d
+        for d in (switch, light, binary_sensor, sensor, thermostat, heat_pump_mode)
     }
     system.devices = {
         **platform_devices,
@@ -118,6 +128,7 @@ async def setup_integration(
     system.set_aux = AsyncMock()
     system.set_temps = AsyncMock()
     system.set_light = AsyncMock()
+    system.switch_hpm_mode = AsyncMock()
 
     await setup_entry(hass, config_entry, system)
 
@@ -130,6 +141,7 @@ async def setup_integration(
         thermostat=thermostat,
         heater=heater,
         pool_temp=pool_temp,
+        heat_pump_mode=heat_pump_mode,
     )
 
 
@@ -185,20 +197,17 @@ def get_aqualink_device(system, name, cls=None, data=None):
     if cls is None:
         cls = AqualinkDevice
 
-        # AqualinkDevice doesn't implement some of the properties since it's left to
-        # sub-classes for them to do. Provide a basic implementation here for the
-        # benefits of the test suite.
-        attrs = {
-            "name": name,
-            "manufacturer": "Jandy",
-            "model": "Device",
-            "label": name.upper(),
-        }
-
-        for k, v in attrs.items():
-            patcher = patch.object(cls, k, new_callable=PropertyMock)
-            mock = patcher.start()
-            mock.return_value = v
+        # AqualinkDevice is abstract, so create a concrete subclass for testing.
+        cls = type(
+            "ConcreteAqualinkDevice",
+            (AqualinkDevice,),
+            {
+                "name": property(lambda self: self.data["name"]),
+                "manufacturer": property(lambda self: "Jandy"),
+                "model": property(lambda self: "Device"),
+                "label": property(lambda self: self.data["name"].upper()),
+            },
+        )
 
     if data is None:
         data = {}

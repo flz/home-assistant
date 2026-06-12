@@ -1,6 +1,7 @@
 """Component to embed Aqualink devices."""
 
 from iaqualink.device import AqualinkDevice
+from iaqualink.system import SystemStatus
 
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -41,4 +42,4 @@ class AqualinkEntity[AqualinkDeviceT: AqualinkDevice](
     @property
     def assumed_state(self) -> bool:
         """Return whether the state is based on actual reading from the device."""
-        return self.dev.system.online in [False, None]
+        return self.dev.system.status != SystemStatus.ONLINE

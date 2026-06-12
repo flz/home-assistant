@@ -45,7 +45,7 @@ class HassAqualinkLight(AqualinkEntity[AqualinkLight], LightEntity):
         """Initialize AquaLink light."""
         super().__init__(coordinator, dev)
         if dev.supports_effect:
-            self._attr_effect_list = list(dev.supported_effects)
+            self._attr_effect_list = list(dev.effect_list)
             self._attr_supported_features = LightEntityFeature.EFFECT
         color_mode = ColorMode.ONOFF
         if dev.supports_brightness:
@@ -70,13 +70,15 @@ class HassAqualinkLight(AqualinkEntity[AqualinkLight], LightEntity):
             await await_or_reraise(
                 self.hass,
                 self.coordinator.config_entry,
-                self.dev.set_effect_by_name(effect_name),
+                self.dev.set_effect(effect_name),
             )
         elif brightness := kwargs.get(ATTR_BRIGHTNESS):
             # Aqualink supports percentages in 25% increments.
-            pct = round(brightness * 4.0 / 255) * 25
+            pct = int(round(brightness * 4.0 / 255)) * 25
             await await_or_reraise(
-                self.hass, self.coordinator.config_entry, self.dev.set_brightness(pct)
+                self.hass,
+                self.coordinator.config_entry,
+                self.dev.set_brightness_percentage(pct),
             )
         else:
             await await_or_reraise(
@@ -96,7 +98,7 @@ class HassAqualinkLight(AqualinkEntity[AqualinkLight], LightEntity):
 
         The scale needs converting between 0-100 and 0-255.
         """
-        return round(self.dev.brightness * 255 / 100)
+        return self.dev.brightness_percentage * 255 / 100
 
     @property
     def effect(self) -> str:

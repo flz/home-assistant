@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 from iaqualink.client import AqualinkClient
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import IaquaBinarySensor
 from iaqualink.systems.iaqua.system import IaquaSystem
 import pytest
@@ -51,8 +52,8 @@ async def _setup_binary_sensor(
 ) -> str:
     """Set up the integration with a single binary sensor entity."""
     system = get_aqualink_system(client, cls=IaquaSystem)
-    system.online = True
-    system.update = AsyncMock()
+    system._status = SystemStatus.ONLINE
+    system.refresh = AsyncMock()
     sensor = get_aqualink_device(
         system, name=name, cls=IaquaBinarySensor, data={"state": state}
     )
