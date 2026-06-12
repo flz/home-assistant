@@ -48,12 +48,15 @@ class HassAqualinkSensor(AqualinkEntity[AqualinkSensor], SensorEntity):
 
     @property
     @override
-    def native_value(self) -> int | float | None:
+    def native_value(self) -> int | float | str | None:
         """Return the state of the sensor."""
-        if self.dev.state == "":
+        if self.dev.value == "":
             return None
 
         try:
-            return int(self.dev.state)
+            return int(self.dev.value)
         except ValueError:
-            return float(self.dev.state)
+            try:
+                return float(self.dev.value)
+            except ValueError:
+                return self.dev.value

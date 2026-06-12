@@ -3,8 +3,8 @@
 import logging
 from typing import Any, override
 
-from iaqualink.device import AqualinkThermostat
-from iaqualink.systems.iaqua.device import AqualinkState
+from iaqualink.device import AqualinkClimate
+from iaqualink.systems.iaqua.device import IaquaHeaterState
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -36,11 +36,11 @@ async def async_setup_entry(
         HassAqualinkThermostat(
             config_entry.runtime_data.coordinators[dev.system.serial], dev
         )
-        for dev in config_entry.runtime_data.thermostats
+        for dev in config_entry.runtime_data.climates
     )
 
 
-class HassAqualinkThermostat(AqualinkEntity[AqualinkThermostat], ClimateEntity):
+class HassAqualinkThermostat(AqualinkEntity[AqualinkClimate], ClimateEntity):
     """Representation of a thermostat."""
 
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
@@ -51,17 +51,17 @@ class HassAqualinkThermostat(AqualinkEntity[AqualinkThermostat], ClimateEntity):
     )
 
     def __init__(
-        self, coordinator: AqualinkDataUpdateCoordinator, dev: AqualinkThermostat
+        self, coordinator: AqualinkDataUpdateCoordinator, dev: AqualinkClimate
     ) -> None:
         """Initialize AquaLink thermostat."""
         super().__init__(coordinator, dev)
         self._attr_temperature_unit = (
             UnitOfTemperature.FAHRENHEIT
-            if dev.unit == "F"
+            if dev.temperature_unit == "F"
             else UnitOfTemperature.CELSIUS
         )
-        self._attr_min_temp = dev.min_temperature
-        self._attr_max_temp = dev.max_temperature
+        self._attr_min_temp = dev.min_temp
+        self._attr_max_temp = dev.max_temp
 
     @property
     @override
@@ -90,10 +90,10 @@ class HassAqualinkThermostat(AqualinkEntity[AqualinkThermostat], ClimateEntity):
     @override
     def hvac_action(self) -> HVACAction:
         """Return the current HVAC action."""
-        state = AqualinkState(self.dev._heater.state)  # noqa: SLF001
-        if state == AqualinkState.ON:
+        state = IaquaHeaterState(self.dev._heater.state)  # noqa: SLF001
+        if state == IaquaHeaterState.ON:
             return HVACAction.HEATING
-        if state == AqualinkState.ENABLED:
+        if state == IaquaHeaterState.ENABLED:
             return HVACAction.IDLE
         return HVACAction.OFF
 
@@ -101,7 +101,7 @@ class HassAqualinkThermostat(AqualinkEntity[AqualinkThermostat], ClimateEntity):
     @override
     def target_temperature(self) -> float:
         """Return the current target temperature."""
-        return float(self.dev.state)
+        return float(self.dev.target_temperature)
 
     @refresh_system
     @override
@@ -117,6 +117,9 @@ class HassAqualinkThermostat(AqualinkEntity[AqualinkThermostat], ClimateEntity):
     @override
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
-        if self.dev.current_temperature != "":
+        if (
+            self.dev.current_temperature is not None
+            and self.dev.current_temperature != ""
+        ):
             return float(self.dev.current_temperature)
         return None

@@ -10,6 +10,7 @@ from iaqualink.exception import (
     AqualinkServiceException,
     AqualinkServiceUnauthorizedException,
 )
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import (
     IaquaColorLightJC,
     IaquaDimmableLight,
@@ -68,8 +69,8 @@ async def _setup_light(
 ) -> tuple[IaquaSystem, object, str, object]:
     """Set up the integration with a single light entity."""
     system = get_aqualink_system(client, cls=IaquaSystem)
-    system.online = True
-    system.update = AsyncMock()
+    system._status = SystemStatus.ONLINE
+    system.refresh = AsyncMock()
     light = get_aqualink_device(system, name="aux_1", cls=cls, data=data)
     system.get_devices = AsyncMock(return_value={light.name: light})
     system.set_aux = AsyncMock()

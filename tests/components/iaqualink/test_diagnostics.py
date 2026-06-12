@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from iaqualink.client import AqualinkClient
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import IaquaLightSwitch, IaquaSensor
 from iaqualink.systems.iaqua.system import IaquaSystem
 from syrupy.assertion import SnapshotAssertion
@@ -28,8 +29,8 @@ async def test_diagnostics(
 
     system = get_aqualink_system(client, cls=IaquaSystem)
     system.data["serial_number"] = "SN00001"
-    system.online = True
-    system.update = AsyncMock()
+    system._status = SystemStatus.ONLINE
+    system.refresh = AsyncMock()
     systems = {system.serial: system}
     light = get_aqualink_device(
         system, name="aux_1", cls=IaquaLightSwitch, data={"state": "1"}

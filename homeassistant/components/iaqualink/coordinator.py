@@ -9,6 +9,7 @@ from iaqualink.exception import (
     AqualinkServiceThrottledException,
     AqualinkServiceUnauthorizedException,
 )
+from iaqualink.system import SystemStatus
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -44,7 +45,7 @@ class AqualinkDataUpdateCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self) -> None:
         """Refresh internal state for a system."""
         try:
-            await self.system.update()
+            await self.system.refresh()
         except AqualinkServiceUnauthorizedException as err:
             raise ConfigEntryAuthFailed("Invalid credentials for iAquaLink") from err
         except AqualinkServiceThrottledException:
@@ -58,5 +59,9 @@ class AqualinkDataUpdateCoordinator(DataUpdateCoordinator[None]):
                 "Unable to update iAquaLink system "
                 f"{self.system.serial}: {error_detail(err)}"
             ) from err
-        if self.system.online is not True:
-            raise UpdateFailed(f"iAquaLink system {self.system.serial} is offline")
+        if self.system.status not in [SystemStatus.ONLINE, SystemStatus.CONNECTED]:
+            _LOGGER.debug(
+                "System %s status is %s",
+                self.system.serial,
+                self.system.status,
+            )
