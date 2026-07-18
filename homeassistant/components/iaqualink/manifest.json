@@ -10,7 +10,7 @@
   "loggers": ["iaqualink"],
   "quality_scale": "silver",
   "requirements": [
-    "git+https://github.com/flz/iaqualink-py.git@master#iaqualink==0.7.0",
+    "git+https://github.com/flz/iaqualink-py.git@worktree-zs500-system#iaqualink==0.7.0",
     "h2==4.3.0"
   ],
   "single_config_entry": true
