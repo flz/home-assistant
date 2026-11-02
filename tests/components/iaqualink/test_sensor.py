@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 from iaqualink.client import AqualinkClient
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import IaquaSensor
 from iaqualink.systems.iaqua.system import IaquaSystem
 import pytest
@@ -44,7 +45,7 @@ async def _setup_sensor(
     client: AqualinkClient,
     *,
     name: str,
-    state: str,
+    state: str | float | None,
     temp_unit: str = "F",
 ) -> tuple[str, object]:
     """Set up the integration with a single sensor entity."""
@@ -53,12 +54,12 @@ async def _setup_sensor(
         cls=IaquaSystem,
         data={"home_screen": [{}, {}, {}, {"temp_scale": temp_unit}]},
     )
-    system.online = True
+    system._status = SystemStatus.ONLINE
 
     async def update() -> None:
         system.temp_unit = temp_unit
 
-    system.update = AsyncMock(side_effect=update)
+    system.refresh = AsyncMock(side_effect=update)
     sensor = get_aqualink_device(
         system, name=name, cls=IaquaSensor, data={"state": state}
     )
@@ -126,13 +127,16 @@ async def test_sensor_initialization(
         pytest.param("", STATE_UNKNOWN, id="empty"),
         pytest.param("72", "72", id="int"),
         pytest.param("7.2", "7.2", id="float"),
+        pytest.param("n/a", "n/a", id="text"),
+        pytest.param(None, STATE_UNKNOWN, id="none"),
+        pytest.param(7.5, "7.5", id="numeric"),
     ],
 )
 async def test_sensor_native_value(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     client: AqualinkClient,
-    state: str,
+    state: str | float | None,
     expected_state: str,
 ) -> None:
     """Test sensor state parsing."""

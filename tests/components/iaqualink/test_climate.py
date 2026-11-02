@@ -12,11 +12,13 @@ from iaqualink.exception import (
     AqualinkServiceException,
     AqualinkServiceUnauthorizedException,
 )
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import (
-    AqualinkState,
-    IaquaAuxSwitch,
+    IaquaClimate,
+    IaquaHeater,
+    IaquaHeaterState,
     IaquaSensor,
-    IaquaThermostat,
+    IaquaSetPoint,
 )
 from iaqualink.systems.iaqua.system import IaquaSystem
 import pytest
@@ -64,7 +66,7 @@ async def _setup_thermostat(
     client: AqualinkClient,
     *,
     temp_unit: str = "F",
-    heater_state: str = AqualinkState.ON.value,
+    heater_state: str = IaquaHeaterState.ON.value,
     target_temperature: str = "84",
     current_temperature: str = "80",
 ) -> tuple[IaquaSystem, object, object, object, str, object]:
@@ -77,16 +79,16 @@ async def _setup_thermostat(
         cls=IaquaSystem,
         data={"home_screen": [{}, {}, {}, {"temp_scale": temp_unit}]},
     )
-    system.online = True
+    system._status = SystemStatus.ONLINE
 
     async def update() -> None:
         system.temp_unit = temp_unit
 
-    system.update = AsyncMock(side_effect=update)
+    system.refresh = AsyncMock(side_effect=update)
     heater = get_aqualink_device(
         system,
         name="pool_heater",
-        cls=IaquaAuxSwitch,
+        cls=IaquaHeater,
         data={"state": heater_state, "aux": "1"},
     )
     sensor = get_aqualink_device(
@@ -95,19 +97,25 @@ async def _setup_thermostat(
         cls=IaquaSensor,
         data={"state": current_temperature},
     )
-    thermostat = get_aqualink_device(
+    set_point = get_aqualink_device(
         system,
         name="pool_set_point",
-        cls=IaquaThermostat,
+        cls=IaquaSetPoint,
         data={"state": target_temperature},
+    )
+    thermostat = get_aqualink_device(
+        system,
+        name="pool_thermostat",
+        cls=IaquaClimate,
     )
     system.devices = {
         heater.name: heater,
         sensor.name: sensor,
+        set_point.name: set_point,
         thermostat.name: thermostat,
     }
     system.get_devices = AsyncMock(return_value={thermostat.name: thermostat})
-    system.set_aux = AsyncMock()
+    system.set_switch = AsyncMock()
     system.set_temps = AsyncMock()
 
     await setup_entry(hass, config_entry, system)
@@ -117,19 +125,21 @@ async def _setup_thermostat(
     entity_id = entity_ids[0]
     entity_state = hass.states.get(entity_id)
     assert entity_state is not None
-    return system, heater, sensor, thermostat, entity_id, entity_state
+    return system, heater, sensor, set_point, entity_id, entity_state
 
 
 @pytest.mark.parametrize(
     ("heater_state", "expected_action", "expected_mode"),
     [
         pytest.param(
-            AqualinkState.ON.value, HVACAction.HEATING, HVACMode.HEAT, id="heating"
+            IaquaHeaterState.ON.value, HVACAction.HEATING, HVACMode.HEAT, id="heating"
         ),
         pytest.param(
-            AqualinkState.ENABLED.value, HVACAction.IDLE, HVACMode.OFF, id="idle"
+            IaquaHeaterState.ENABLED.value, HVACAction.IDLE, HVACMode.OFF, id="idle"
         ),
-        pytest.param(AqualinkState.OFF.value, HVACAction.OFF, HVACMode.OFF, id="off"),
+        pytest.param(
+            IaquaHeaterState.OFF.value, HVACAction.OFF, HVACMode.OFF, id="off"
+        ),
     ],
 )
 async def test_thermostat_properties(
@@ -165,7 +175,7 @@ async def test_thermostat_current_temperature_none(
         config_entry,
         client,
         temp_unit="C",
-        heater_state=AqualinkState.OFF.value,
+        heater_state=IaquaHeaterState.OFF.value,
         target_temperature="24",
         current_temperature="",
     )
@@ -177,8 +187,10 @@ async def test_thermostat_current_temperature_none(
 @pytest.mark.parametrize(
     ("hvac_mode", "initial_state", "expected_state"),
     [
-        pytest.param(HVACMode.HEAT, AqualinkState.OFF.value, HVACMode.HEAT, id="heat"),
-        pytest.param(HVACMode.OFF, AqualinkState.ON.value, HVACMode.OFF, id="off"),
+        pytest.param(
+            HVACMode.HEAT, IaquaHeaterState.OFF.value, HVACMode.HEAT, id="heat"
+        ),
+        pytest.param(HVACMode.OFF, IaquaHeaterState.ON.value, HVACMode.OFF, id="off"),
     ],
 )
 async def test_thermostat_set_hvac_mode(
@@ -199,12 +211,12 @@ async def test_thermostat_set_hvac_mode(
 
     async def set_aux(_: str) -> None:
         heater.data["state"] = (
-            AqualinkState.ON.value
+            IaquaHeaterState.ON.value
             if hvac_mode == HVACMode.HEAT
-            else AqualinkState.OFF.value
+            else IaquaHeaterState.OFF.value
         )
 
-    system.set_aux = AsyncMock(side_effect=set_aux)
+    system.set_switch = AsyncMock(side_effect=set_aux)
 
     await hass.services.async_call(
         CLIMATE_DOMAIN,
@@ -253,7 +265,7 @@ async def test_thermostat_set_temperature(
         pytest.param(
             SERVICE_SET_HVAC_MODE,
             {ATTR_HVAC_MODE: HVACMode.HEAT},
-            "set_aux",
+            "set_switch",
             id="set-hvac-mode",
         ),
         pytest.param(
@@ -309,7 +321,7 @@ async def test_climate_action_errors_leave_state_unchanged(
         hass,
         config_entry,
         client,
-        heater_state=AqualinkState.OFF.value,
+        heater_state=IaquaHeaterState.OFF.value,
     )
     initial_state = entity_state.state
     setattr(system, system_attr, AsyncMock(side_effect=raised_exception))
@@ -338,7 +350,7 @@ async def test_thermostat_set_unknown_hvac_mode_logs_warning(
         hass,
         config_entry,
         client,
-        heater_state=AqualinkState.OFF.value,
+        heater_state=IaquaHeaterState.OFF.value,
     )
     climate_component = hass.data[CLIMATE_DOMAIN]
     entity = climate_component.get_entity(entity_id)
@@ -351,4 +363,22 @@ async def test_thermostat_set_unknown_hvac_mode_logs_warning(
     assert entity_state is not None
     assert entity_state.state == HVACMode.OFF
     assert "Unknown operation mode" in caplog.text
-    system.set_aux.assert_not_called()
+    system.set_switch.assert_not_called()
+
+
+async def test_thermostat_target_temperature_none(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    client: AqualinkClient,
+) -> None:
+    """Test thermostat target temperature handles empty values."""
+    _, _, _, _, _, entity_state = await _setup_thermostat(
+        hass,
+        config_entry,
+        client,
+        temp_unit="C",
+        heater_state=IaquaHeaterState.OFF.value,
+        target_temperature="",
+    )
+
+    assert entity_state.attributes["temperature"] is None

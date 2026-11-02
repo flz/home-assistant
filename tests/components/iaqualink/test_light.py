@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import httpx2
 from iaqualink.client import AqualinkClient
@@ -10,6 +10,7 @@ from iaqualink.exception import (
     AqualinkServiceException,
     AqualinkServiceUnauthorizedException,
 )
+from iaqualink.system import SystemStatus
 from iaqualink.systems.iaqua.device import (
     IaquaColorLightJC,
     IaquaDimmableLight,
@@ -36,6 +37,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import async_update_entity
 
 from .conftest import (
     assert_platform_setup,
@@ -67,8 +69,8 @@ async def _setup_light(
 ) -> tuple[IaquaSystem, object, str, object]:
     """Set up the integration with a single light entity."""
     system = get_aqualink_system(client, cls=IaquaSystem)
-    system.online = True
-    system.update = AsyncMock()
+    system._status = SystemStatus.ONLINE
+    system.refresh = AsyncMock()
     light = get_aqualink_device(system, name="aux_1", cls=cls, data=data)
     system.get_devices = AsyncMock(return_value={light.name: light})
     system.set_aux = AsyncMock()
@@ -278,3 +280,31 @@ async def test_light_turn_off_errors_leave_state_unchanged(
     entity_state = hass.states.get(entity_id)
     assert entity_state is not None
     assert entity_state.state == STATE_ON
+
+
+async def test_dimmable_light_unknown_brightness(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    client: AqualinkClient,
+) -> None:
+    """Test a dimmable light losing its brightness reading exposes none."""
+    _, _, entity_id, _ = await _setup_light(
+        hass,
+        config_entry,
+        client,
+        IaquaDimmableLight,
+        {"state": "1", "aux": "1", "subtype": "50", "label": "pool light"},
+    )
+
+    with patch.object(
+        IaquaDimmableLight,
+        "brightness_percentage",
+        new_callable=PropertyMock,
+        return_value=None,
+    ):
+        await async_update_entity(hass, entity_id)
+
+    entity_state = hass.states.get(entity_id)
+    assert entity_state is not None
+    assert entity_state.state == STATE_ON
+    assert entity_state.attributes["brightness"] is None

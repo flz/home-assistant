@@ -34,6 +34,7 @@ class AqualinkFlowHandler(ConfigFlow, domain=DOMAIN):
     """iAquaLink config flow."""
 
     VERSION = 1
+    MINOR_VERSION = 3
 
     async def _async_test_credentials(
         self, user_input: dict[str, Any]

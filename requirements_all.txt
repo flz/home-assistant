@@ -1400,7 +1400,7 @@ hyponcloud==1.0.2
 iammeter==0.2.1
 
 # homeassistant.components.iaqualink
-iaqualink==0.7.0
+iaqualink==0.8.0a0
 
 # homeassistant.components.ibeacon
 ibeacon-ble==1.2.0

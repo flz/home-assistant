@@ -39,7 +39,7 @@
 # name: test_setup[sensor.pool_ph-state]
   StateSnapshot({
     'attributes': ReadOnlyDict({
-      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'Ph',
+      <EntityStateAttribute.FRIENDLY_NAME: 'friendly_name'>: 'pH',
     }),
     'context': <ANY>,
     'entity_id': 'sensor.pool_ph',
